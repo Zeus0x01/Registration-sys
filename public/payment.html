@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Payment</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🎉 Event Payment</h1>
+            <p class="subtitle">Complete your payment to secure your spot!</p>
+
+            <!-- Error Message -->
+            <div id="error-message" class="message error hidden"></div>
+
+            <!-- Payment Form -->
+            <form id="payment-form">
+                <div class="form-group">
+                    <label for="userName">Full Name *</label>
+                    <input type="text" id="userName" name="userName" required placeholder="Enter your full name">
+                </div>
+
+                <div class="form-group">
+                    <label for="userEmail">Email Address *</label>
+                    <input type="email" id="userEmail" name="userEmail" required placeholder="your.email@example.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="userPhone">Phone Number *</label>
+                    <input type="tel" id="userPhone" name="userPhone" required placeholder="+20123456789">
+                </div>
+
+                <!-- Price Selection (Shown if multiple options available) -->
+                <div id="price-selection" class="form-group hidden">
+                    <label for="selectedPrice">Select Price Option *</label>
+                    <select id="selectedPrice" name="selectedPrice" required>
+                        <option value="">Choose an option...</option>
+                    </select>
+                </div>
+
+                <!-- Default Price Display (Shown if no options available) -->
+                <div id="price-display" class="form-group">
+                    <label>Price</label>
+                    <div class="price-value" id="defaultPrice">Loading...</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Payment Method *</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="paymentMethod" value="paymob-wallet" checked>
+                            <span>📱 Mobile Wallet</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="paymentMethod" value="paymob-card">
+                            <span>💳 Card/Debit Card</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Mobile Wallet Number Field (Hidden by default) -->
+                <div id="wallet-fields" class="form-group hidden">
+                    <label for="walletNumber">Mobile Wallet Number *</label>
+                    <input type="tel" id="walletNumber" name="walletNumber" placeholder="01xxxxxxxxx" maxlength="11">
+                    <small>Enter your mobile wallet number (11 digits)</small>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="submit-btn">
+                    Proceed to Payment
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Paymob Iframe Modal -->
+    <div id="paymob-modal" class="modal hidden">
+        <div class="modal-content modal-iframe">
+            <span class="modal-close" onclick="closePaymobModal()">&times;</span>
+            <iframe id="paymob-iframe" frameborder="0"></iframe>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="success-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="success-icon">✅</div>
+            <h2>Payment Successful!</h2>
+            <p>Your payment has been confirmed. Here is your ticket:</p>
+
+            <div class="qr-container">
+                <img id="qr-code-image" src="" alt="QR Code">
+            </div>
+
+            <div class="unique-id">
+                <label>Unique ID:</label>
+                <span id="unique-id-display"></span>
+            </div>
+
+            <p class="info-text">
+                Save this QR code or Unique ID. You'll need it for check-in at the event.
+            </p>
+
+            <button class="btn btn-primary" onclick="downloadQR()">📥 Download QR Code</button>
+            <button class="btn btn-secondary" onclick="window.location.reload()">Close</button>
+        </div>
+    </div>
+
+    <script src="js/payment.js"></script>
+</body>
+
+</html>

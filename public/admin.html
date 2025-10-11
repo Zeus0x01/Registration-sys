@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Login Form -->
+        <div id="login-section" class="card">
+            <h1>🔐 Admin Login</h1>
+
+            <div id="login-error" class="message error hidden"></div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <p>Don't have an account? <a href="register.html" style="color: #667eea; font-weight: 600;">Register here</a></p>
+            </div>
+        </div>
+
+        <!-- Dashboard (Hidden initially) -->
+        <div id="dashboard-section" class="hidden">
+            <div class="card">
+                <div class="dashboard-header">
+                    <h1>👨‍💼 Admin Dashboard</h1>
+                    <div>
+                        <a href="checkin.html" class="btn btn-primary" style="margin-right: 10px; text-decoration: none;" target="_blank">✅ Check-In Page</a>
+                        <button class="btn btn-secondary" onclick="logout()">Logout</button>
+                    </div>
+                </div>
+
+                <div id="dashboard-error" class="message error hidden"></div>
+                <div id="dashboard-success" class="message success hidden"></div>
+
+                <!-- Settings Form -->
+                <div class="section">
+                    <h2>⚙️ Payment Settings</h2>
+                    <form id="settings-form">
+                        <div class="form-group">
+                            <label for="price">Default Price (EGP) *</label>
+                            <input type="number" id="price" name="price" step="0.01" min="0" required>
+                            <small>This is used as fallback if no price options are set</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Price Options (Optional)</label>
+                            <small>Add multiple price tiers that users can choose from</small>
+                            <div id="price-options-container" style="margin-top: 10px;">
+                                <!-- Price options will be added here -->
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-small" onclick="addPriceOption()" style="margin-top: 10px;">+ Add Price Option</button>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="isActive">Status *</label>
+                            <select id="isActive" name="isActive" required>
+                                <option value="true">Active</option>
+                                <option value="false">Inactive</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                    </form>
+                </div>
+
+                <!-- Payment Statistics -->
+                <div class="section">
+                    <h2>📊 Payment Statistics</h2>
+                    <div id="statistics-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                        <div class="stat-card">
+                            <div class="stat-label">💰 Total Money</div>
+                            <div class="stat-value" id="stat-total-money">0 EGP</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">✅ Approved</div>
+                            <div class="stat-value" id="stat-approved">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">📝 Total Payments</div>
+                            <div class="stat-value" id="stat-total">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">🎫 Checked In</div>
+                            <div class="stat-value" id="stat-checkedin">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">⏳ Pending</div>
+                            <div class="stat-value" id="stat-pending">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payments List -->
+                <div class="section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2>💳 Recent Payments</h2>
+                        <div>
+                            <button class="btn btn-danger btn-small" onclick="archiveAllPayments()" title="Archive all payments and clear table" style="margin-right: 10px;">📦 Archive All</button>
+                            <button class="btn btn-primary btn-small" onclick="loadPayments()" title="Refresh payments list">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table id="payments-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Amount</th>
+                                    <th>Method</th>
+                                    <th>Status</th>
+                                    <th>Unique ID</th>
+                                    <th>Approved</th>
+                                    <th>Checked In</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payments-tbody">
+                                <tr>
+                                    <td colspan="11" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Archived Payments -->
+                <div class="section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2>📦 Archived Payments</h2>
+                        <button class="btn btn-secondary btn-small" onclick="toggleArchivedSection()" id="toggle-archived-btn">Show Archived</button>
+                    </div>
+                    <div id="archived-section" style="display: none;">
+                        <div class="table-responsive">
+                            <table id="archived-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Phone</th>
+                                        <th>Amount</th>
+                                        <th>Method</th>
+                                        <th>Status</th>
+                                        <th>Unique ID</th>
+                                        <th>Approved</th>
+                                        <th>Checked In</th>
+                                        <th>Archived Date</th>
+                                        <th>Archived By</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="archived-tbody">
+                                    <tr>
+                                        <td colspan="12" class="text-center">No archived payments</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/admin.js"></script>
+</body>
+
+</html>

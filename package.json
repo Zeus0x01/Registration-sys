@@ -1,0 +1,37 @@
+{
+    "name": "payment-system-paymob",
+    "version": "1.0.0",
+    "description": "Payment web app for outings in Egypt using Paymob",
+    "main": "app.js",
+    "scripts": {
+        "start": "node app.js",
+        "dev": "nodemon app.js",
+        "generate-password": "node -e \"console.log(require('bcryptjs').hashSync('admin123', 10))\""
+    },
+    "keywords": [
+        "payment",
+        "paymob",
+        "express",
+        "sequelize",
+        "postgresql"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "express": "^4.18.2",
+        "sequelize": "^6.35.2",
+        "pg": "^8.11.3",
+        "pg-hstore": "^2.3.4",
+        "axios": "^1.6.2",
+        "qrcode": "^1.5.3",
+        "node-telegram-bot-api": "^0.64.0",
+        "jsonwebtoken": "^9.0.2",
+        "bcryptjs": "^2.4.3",
+        "dotenv": "^16.3.1",
+        "body-parser": "^1.20.2",
+        "cors": "^2.8.5"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.2"
+    }
+}

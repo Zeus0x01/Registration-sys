@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Registration</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>👤 Admin Registration</h1>
+            <p class="subtitle">Create your admin account</p>
+
+            <div id="error-message" class="message error hidden"></div>
+            <div id="success-message" class="message success hidden"></div>
+
+            <form id="register-form">
+                <div class="form-group">
+                    <label for="username">Username *</label>
+                    <input type="text" id="username" name="username" required placeholder="Enter username" minlength="3" autocomplete="off">
+                    <small>Minimum 3 characters</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email Address *</label>
+                    <input type="email" id="email" name="email" required placeholder="admin@example.com" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password *</label>
+                    <input type="password" id="password" name="password" required placeholder="Enter password" minlength="6" autocomplete="new-password">
+                    <small>Minimum 6 characters</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password *</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Re-enter password" minlength="6" autocomplete="new-password">
+                </div>
+
+                <div class="form-group">
+                    <label for="fullName">Full Name *</label>
+                    <input type="text" id="fullName" name="fullName" required placeholder="Enter your full name">
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="register-btn">
+                    Create Admin Account
+                </button>
+            </form>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <p>Already have an account? <a href="admin.html" style="color: #667eea; font-weight: 600;">Login here</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/register.js"></script>
+</body>
+
+</html>
