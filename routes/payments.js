@@ -205,10 +205,15 @@ router.post('/payments', async(req, res) => {
 
         const orderId = orderResponse.data.id;
 
-        // Step 3: Create payment intention
+        // Step 3: Create payment intention with callbacks
         const integrationId = paymentMethod === 'paymob-wallet' ?
             process.env.PAYMOB_INTEGRATION_ID_WALLET :
             process.env.PAYMOB_INTEGRATION_ID_CARD;
+
+        // Get base URL for callbacks (use WEBHOOK_URL if available, otherwise construct from environment)
+        const baseUrl = process.env.WEBHOOK_URL ? 
+            process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') : 
+            `http://localhost:${process.env.PORT || 5000}`;
 
         const intentionResponse = await axios.post(`${process.env.PAYMOB_API_URL}/api/acceptance/payment_keys`, {
             auth_token: authToken,
@@ -231,7 +236,10 @@ router.post('/payments', async(req, res) => {
                 state: 'NA'
             },
             currency: 'EGP',
-            integration_id: parseInt(integrationId)
+            integration_id: parseInt(integrationId),
+            // Add callback URLs
+            notification_url: `${baseUrl}/api/paymob-webhook`,
+            redirection_url: `${baseUrl}/payment-response.html`
         });
 
         const paymentToken = intentionResponse.data.token;
