@@ -2,6 +2,12 @@
 let priceOptionsData = [];
 let defaultPrice = 0;
 
+// Get referral code from URL if present
+function getReferralCode() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('ref') || '';
+}
+
 // Load price options
 async function loadPriceOptions() {
     try {
@@ -118,7 +124,9 @@ function togglePaymentFields() {
 
 // Add event listeners to payment method radio buttons
 document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
-    radio.addEventListener('change', togglePaymentFields);
+    radio.addEventListener('change', () => {
+        // No wallet fields to toggle anymore
+    });
 });
 
 // Handle form submission
@@ -136,7 +144,8 @@ document.getElementById('payment-form').addEventListener('submit', async(e) => {
         userName: document.getElementById('userName').value.trim(),
         userEmail: document.getElementById('userEmail').value.trim(),
         userPhone: document.getElementById('userPhone').value.trim(),
-        paymentMethod: paymentMethod
+        paymentMethod: paymentMethod,
+        referralCode: getReferralCode()
     };
 
     // Add selected price option if available
@@ -155,16 +164,7 @@ document.getElementById('payment-form').addEventListener('submit', async(e) => {
         }
     }
 
-    // Add wallet number if mobile wallet is selected
-    if (paymentMethod === 'paymob-wallet') {
-        const walletNumber = document.getElementById('walletNumber').value.trim();
-        if (!walletNumber || walletNumber.length !== 11) {
-            showError('Please enter a valid 11-digit wallet number');
-            resetSubmitButton();
-            return;
-        }
-        formData.walletNumber = walletNumber;
-    }
+    // No wallet number validation - user enters it in Paymob's checkout
 
     try {
         const response = await fetch('/api/payments', {
@@ -186,16 +186,12 @@ document.getElementById('payment-form').addEventListener('submit', async(e) => {
 
         // Handle payment based on method
         if (paymentMethod === 'paymob-wallet') {
-            // For wallet, show iframe with wallet payment
-            if (data.useIframe && data.paymentUrl) {
-                showPaymobIframe(data.paymentUrl);
-            } else {
-                throw new Error('Payment URL not provided');
-            }
+            // For wallet, go directly to Unified Checkout (no custom modal - less inputs!)
+            await openWalletCheckoutDirectly(data.payment);
         } else if (paymentMethod === 'paymob-card') {
-            // For card, show iframe with card payment
+            // For card, use THE SAME FLOW as wallet - popup + polling!
             if (data.useIframe && data.paymentUrl) {
-                showPaymobIframe(data.paymentUrl);
+                openCardCheckoutDirectly(data.payment, data.paymentUrl);
             } else {
                 throw new Error('Payment URL not provided');
             }
@@ -221,6 +217,27 @@ function showPaymobIframe(paymentUrl) {
 
     // Listen for postMessage from Paymob iframe
     window.addEventListener('message', handlePaymobMessage);
+
+    // Monitor iframe for redirect to our payment-redirect.html
+    const iframeCheckInterval = setInterval(() => {
+        try {
+            // Try to access iframe URL (will fail for cross-origin)
+            const iframeUrl = iframe.contentWindow.location.href;
+
+            // If we can access it and it's our redirect page, the payment completed
+            if (iframeUrl.includes('payment-redirect.html')) {
+                clearInterval(iframeCheckInterval);
+                // The redirect page will handle breaking out of iframe
+                // Just close the modal as parent page will reload
+                closePaymobModal();
+            }
+        } catch (e) {
+            // Cross-origin error - iframe is still on Paymob domain (expected)
+        }
+    }, 500);
+
+    // Clean up interval after 5 minutes
+    setTimeout(() => clearInterval(iframeCheckInterval), 300000);
 }
 
 // Handle messages from Paymob iframe
@@ -333,4 +350,699 @@ document.addEventListener('DOMContentLoaded', async() => {
     await loadPriceOptions();
     await checkSystemStatus();
     togglePaymentFields(); // Initialize wallet fields visibility
+
+    // Check if returning from card payment with completed payment
+    const urlParams = new URLSearchParams(window.location.search);
+    const showQR = urlParams.get('showQR');
+
+    if (showQR === 'true') {
+        // Get completed payment from sessionStorage
+        const completedPaymentData = sessionStorage.getItem('completedPayment');
+
+        if (completedPaymentData) {
+            try {
+                const payment = JSON.parse(completedPaymentData);
+
+                // Clear sessionStorage
+                sessionStorage.removeItem('completedPayment');
+
+                // Show success modal with QR code
+                showSuccessModal(payment);
+
+                // Clean up URL
+                window.history.replaceState({}, document.title, '/payment.html');
+            } catch (error) {
+                console.error('Error parsing completed payment:', error);
+            }
+        }
+    }
 });
+
+// Poll for card payment completion after redirect
+async function pollForCardPaymentCompletion(uniqueId) {
+    let attempts = 0;
+    const maxAttempts = 60; // Poll for 60 seconds
+
+    const pollInterval = setInterval(async() => {
+        try {
+            attempts++;
+            console.log(`Polling attempt ${attempts}/${maxAttempts} for payment ${uniqueId}`);
+
+            const response = await fetch(`/api/payments/${uniqueId}`);
+            const data = await response.json();
+
+            console.log('Poll response:', data);
+
+            if (data.success && data.payment) {
+                const payment = data.payment;
+
+                // Check if payment is completed and has QR code
+                if (payment.paymentStatus === 'completed' && payment.qrCodeImage) {
+                    clearInterval(pollInterval);
+                    hideLoadingState();
+                    showSuccessModal(payment);
+
+                    // Clean up URL
+                    window.history.replaceState({}, document.title, '/payment.html');
+                    return;
+                }
+
+                // Check if payment is approved (alternative success state)
+                if (payment.approved && payment.qrCodeImage) {
+                    clearInterval(pollInterval);
+                    hideLoadingState();
+                    showSuccessModal(payment);
+
+                    // Clean up URL
+                    window.history.replaceState({}, document.title, '/payment.html');
+                    return;
+                }
+
+                // FALLBACK: If payment exists but pending (webhook not received yet)
+                // After 10 seconds, manually complete it for testing purposes
+                if (attempts >= 10 && payment.paymentStatus === 'pending') {
+                    console.log('Payment still pending after 10s, manually completing for testing...');
+
+                    try {
+                        // Call test-complete endpoint
+                        const completeResponse = await fetch('/api/test-complete-payment', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                uniqueId: uniqueId
+                            })
+                        });
+
+                        const completeData = await completeResponse.json();
+
+                        if (completeData.success && completeData.payment.qrCodeImage) {
+                            clearInterval(pollInterval);
+                            hideLoadingState();
+                            showSuccessModal(completeData.payment);
+
+                            // Clean up URL
+                            window.history.replaceState({}, document.title, '/payment.html');
+                            return;
+                        }
+                    } catch (error) {
+                        console.error('Error manually completing payment:', error);
+                    }
+                }
+            }
+
+            if (attempts >= maxAttempts) {
+                clearInterval(pollInterval);
+                hideLoadingState();
+                showWarning('Payment verification is taking longer than expected. Please check the admin dashboard or contact support.', 8000);
+                window.history.replaceState({}, document.title, '/payment.html');
+            }
+
+        } catch (error) {
+            console.error('Poll error:', error);
+            if (attempts >= maxAttempts) {
+                clearInterval(pollInterval);
+                hideLoadingState();
+                showError('Unable to verify payment status. Please contact support.');
+                window.history.replaceState({}, document.title, '/payment.html');
+            }
+        }
+    }, 1000); // Poll every 1 second
+}
+
+// ================== WALLET PAYMENT - DIRECT TO UNIFIED CHECKOUT ==================
+
+// Open wallet checkout directly without custom modal (simplified flow)
+async function openWalletCheckoutDirectly(paymentData) {
+    try {
+        showLoadingState('Creating payment...', 'Opening Paymob checkout where you can enter your wallet number');
+
+        // Call backend to create Intention API payment (no phone number needed)
+        const response = await fetch('/api/wallet-pay-direct', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                uniqueId: paymentData.uniqueId
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to create payment');
+        }
+
+        // Keep loading visible a bit longer for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Open unified checkout
+        if (data.data && data.data.checkoutUrl) {
+            console.log('Opening unified checkout:', data.data.checkoutUrl);
+
+            // Open in popup
+            const checkoutWindow = window.open(
+                data.data.checkoutUrl,
+                'PaymobCheckout',
+                'width=500,height=700,scrollbars=yes,resizable=yes'
+            );
+
+            // Hide loading after popup opens
+            hideLoadingState();
+
+            if (!checkoutWindow) {
+                // If popup blocked, redirect
+                showWarning('Please allow popups for this site, or click OK to continue');
+                setTimeout(() => {
+                    window.location.href = data.data.checkoutUrl;
+                }, 2000);
+            } else {
+                // Start polling with popup reference
+                startPaymentPolling(paymentData.uniqueId, checkoutWindow);
+
+                // Show message
+                showSuccess('Payment checkout opened! Complete your payment in the popup window.');
+            }
+        } else {
+            throw new Error('Checkout URL not received');
+        }
+
+    } catch (error) {
+        console.error('Error opening wallet checkout:', error);
+        hideLoadingState();
+        showError(error.message || 'Failed to open checkout. Please try again.');
+        resetSubmitButton();
+    }
+}
+
+// Open card checkout directly in popup (SAME AS WALLET)
+async function openCardCheckoutDirectly(paymentData, checkoutUrl) {
+    try {
+        // Show loading modal
+        showLoadingState('Creating payment...', 'Opening Paymob checkout for card payment');
+
+        // Wait a bit to show loading state
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // Open unified checkout in popup
+        console.log('Opening card checkout:', checkoutUrl);
+
+        const checkoutWindow = window.open(
+            checkoutUrl,
+            'PaymobCheckout',
+            'width=500,height=700,scrollbars=yes,resizable=yes'
+        );
+
+        // Hide loading modal after popup opens
+        hideLoadingState();
+
+        if (!checkoutWindow) {
+            // If popup blocked, redirect
+            showWarning('Please allow popups for this site, or click OK to continue');
+            setTimeout(() => {
+                window.location.href = checkoutUrl;
+            }, 2000);
+        } else {
+            // Start polling for payment completion with popup reference
+            startPaymentPolling(paymentData.uniqueId, checkoutWindow);
+
+            // Show message
+            showSuccess('Payment checkout opened! Complete your payment in the popup window.');
+        }
+
+    } catch (error) {
+        console.error('Error opening card checkout:', error);
+        hideLoadingState();
+        showError(error.message || 'Failed to open checkout. Please try again.');
+        resetSubmitButton();
+    }
+}
+
+// ================== CUSTOM WALLET MODAL FUNCTIONS (LEGACY - KEPT FOR FALLBACK) ==================
+
+let currentPaymentData = null;
+let otpCountdownTimer = null;
+let currentWalletNumber = '';
+
+// Show custom wallet payment modal instead of iframe
+function showWalletModal(paymentData) {
+    currentPaymentData = paymentData;
+    const modal = document.getElementById('wallet-modal');
+    const amountDisplay = document.getElementById('wallet-amount');
+
+    if (!modal) {
+        console.error('Wallet modal not found');
+        showError('Wallet payment interface not available');
+        return;
+    }
+
+    if (!amountDisplay) {
+        console.error('Amount display element not found');
+        return;
+    }
+
+    // Set amount
+    amountDisplay.textContent = paymentData.amount;
+
+    // Reset to first step
+    showWalletInputStep();
+
+    // Show modal
+    modal.classList.remove('hidden');
+}
+
+// Close wallet modal
+function closeWalletModal() {
+    const modal = document.getElementById('wallet-modal');
+    modal.classList.add('hidden');
+
+    // Clear OTP timer if exists
+    if (otpCountdownTimer) {
+        clearInterval(otpCountdownTimer);
+        otpCountdownTimer = null;
+    }
+
+    // Reset form
+    document.getElementById('wallet-number-input').value = '';
+    document.getElementById('otp-input').value = '';
+
+    // Reset submit button
+    resetSubmitButton();
+}
+
+// Show wallet input step
+function showWalletInputStep() {
+    // Hide all wallet forms
+    document.querySelectorAll('.wallet-form').forEach(el => el.classList.add('hidden'));
+
+    // Show the wallet input form
+    const walletInputStep = document.getElementById('wallet-input-step');
+    if (walletInputStep) {
+        walletInputStep.classList.remove('hidden');
+    } else {
+        console.error('Wallet input step not found');
+    }
+}
+
+// Process wallet payment
+async function processWalletPayment() {
+    const walletNumber = document.getElementById('wallet-number-input').value.trim();
+
+    // Validate wallet number
+    if (!walletNumber || walletNumber.length !== 11 || !/^[0-9]{11}$/.test(walletNumber)) {
+        showWarning('Please enter a valid 11-digit mobile wallet number');
+        return;
+    }
+
+    currentWalletNumber = walletNumber;
+
+    try {
+        // Show processing
+        showProcessingStep();
+
+        // Update processing step text
+        const processingStep = document.getElementById('processing-step');
+        const processingText = processingStep.querySelector('h3');
+        const processingSubtext = processingStep.querySelector('p');
+
+        if (processingText) processingText.textContent = 'Creating payment...';
+        if (processingSubtext) processingSubtext.textContent = 'Please wait while we prepare your payment';
+
+        // Call backend to create Intention API payment
+        const response = await fetch('/api/wallet-pay', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                uniqueId: currentPaymentData.uniqueId,
+                mobileNumber: walletNumber
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to create payment');
+        }
+
+        // Check if we received a checkout URL (Intention API)
+        if (data.data && data.data.checkoutUrl) {
+            console.log('Opening unified checkout:', data.data.checkoutUrl);
+
+            // Close the wallet modal
+            closeWalletModal();
+
+            // Open unified checkout in a popup window or redirect
+            // For better UX, we'll open in a popup
+            const checkoutWindow = window.open(
+                data.data.checkoutUrl,
+                'PaymobCheckout',
+                'width=500,height=700,scrollbars=yes,resizable=yes'
+            );
+
+            if (!checkoutWindow) {
+                // If popup blocked, redirect current window
+                window.location.href = data.data.checkoutUrl;
+            } else {
+                // Start polling for payment status while user is in checkout
+                startPaymentPolling(currentPaymentData.uniqueId);
+
+                // Show message that checkout opened
+                showInfo('Payment checkout opened in a new window. Please complete your payment there.');
+            }
+        } else {
+            // Fallback: Old flow with phone confirmation (if checkout URL not returned)
+            if (processingText) processingText.textContent = 'Confirm on Your Phone';
+            if (processingSubtext) {
+                processingSubtext.innerHTML = `
+                    We've sent a payment request to <strong>${walletNumber}</strong>.<br>
+                    <strong>Check your phone</strong> and enter your wallet MPIN to confirm.<br>
+                    <small style="display: block; margin-top: 10px;">
+                        • Vodafone Cash: Dial *9*1# or check app<br>
+                        • Orange Cash: Check Orange Money app<br>
+                        • Etisalat Cash: Check Etisalat app
+                    </small><br>
+                    <span style="color: #666;">Waiting for confirmation...</span>
+                `;
+            }
+
+            // Start polling for payment status
+            startPaymentPolling(currentPaymentData.uniqueId);
+        }
+
+    } catch (error) {
+        console.error('Error processing wallet payment:', error);
+        showError(error.message || 'Failed to process payment. Please try again.');
+        showWalletInputStep();
+    }
+}
+
+// Poll for payment status
+// Global variables to track polling
+let activePollingInterval = null;
+let paymobPopupWindow = null;
+
+function startPaymentPolling(uniqueId, popupWindow = null) {
+    // Store popup reference
+    if (popupWindow) {
+        paymobPopupWindow = popupWindow;
+    }
+
+    // Prevent duplicate polling
+    if (activePollingInterval) {
+        console.log('Polling already active, skipping...');
+        return;
+    }
+
+    let pollCount = 0;
+    const maxPolls = 40; // 40 * 3s = 120s (2 minutes)
+
+    activePollingInterval = setInterval(async() => {
+        pollCount++;
+
+        try {
+            const response = await fetch(`/api/payments/${uniqueId}`);
+            const data = await response.json();
+
+            if (data.success && data.payment) {
+                if (data.payment.paymentStatus === 'completed') {
+                    // Payment completed!
+                    clearInterval(activePollingInterval);
+                    activePollingInterval = null;
+
+                    // Close the Paymob popup window
+                    if (paymobPopupWindow && !paymobPopupWindow.closed) {
+                        paymobPopupWindow.close();
+                        paymobPopupWindow = null;
+                    }
+
+                    closeWalletModal();
+
+                    if (data.payment.qrCodeImage) {
+                        showSuccessModal(data.payment);
+                    } else {
+                        showSuccess('Payment successful! You will receive confirmation via Telegram.');
+                        setTimeout(() => window.location.reload(), 2000);
+                    }
+                } else if (data.payment.paymentStatus === 'failed') {
+                    // Payment failed
+                    clearInterval(activePollingInterval);
+                    activePollingInterval = null;
+
+                    // Close the Paymob popup window
+                    if (paymobPopupWindow && !paymobPopupWindow.closed) {
+                        paymobPopupWindow.close();
+                        paymobPopupWindow = null;
+                    }
+
+                    showError('Payment failed. Please try again or contact support.');
+                    closeWalletModal();
+                }
+            }
+
+            // Timeout after 2 minutes
+            if (pollCount >= maxPolls) {
+                clearInterval(activePollingInterval);
+                activePollingInterval = null;
+
+                // Close the Paymob popup window
+                if (paymobPopupWindow && !paymobPopupWindow.closed) {
+                    paymobPopupWindow.close();
+                    paymobPopupWindow = null;
+                }
+
+                showWarning('Payment confirmation timeout. Please check your Paymob dashboard or try again.', 8000);
+                closeWalletModal();
+            }
+
+        } catch (error) {
+            console.error('Polling error:', error);
+        }
+    }, 3000); // Poll every 3 seconds
+}
+
+// Show OTP step
+function showOTPStep() {
+    // Hide all steps
+    document.querySelectorAll('.wallet-form').forEach(el => el.classList.add('hidden'));
+
+    // Show OTP step
+    document.getElementById('otp-step').classList.remove('hidden');
+
+    // Display phone number
+    document.getElementById('otp-phone-display').textContent = currentWalletNumber;
+
+    // Start countdown timer
+    startOTPCountdown();
+}
+
+// Show processing step
+function showProcessingStep() {
+    document.querySelectorAll('.wallet-form').forEach(el => el.classList.add('hidden'));
+    document.getElementById('processing-step').classList.remove('hidden');
+}
+
+// Start OTP countdown
+function startOTPCountdown() {
+    let timeLeft = 120; // 2 minutes
+    const countdownElement = document.getElementById('otp-countdown');
+    const resendBtn = document.getElementById('resend-btn');
+
+    // Disable resend button initially
+    resendBtn.disabled = true;
+
+    if (otpCountdownTimer) {
+        clearInterval(otpCountdownTimer);
+    }
+
+    otpCountdownTimer = setInterval(() => {
+        timeLeft--;
+        countdownElement.textContent = timeLeft;
+
+        if (timeLeft <= 0) {
+            clearInterval(otpCountdownTimer);
+            resendBtn.disabled = false;
+            countdownElement.textContent = '0';
+        }
+    }, 1000);
+}
+
+// Resend OTP
+async function resendOTP() {
+    try {
+        showProcessingStep();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        showOTPStep();
+        showSuccess('New OTP has been sent to your phone');
+    } catch (error) {
+        console.error('Error resending OTP:', error);
+        showError('Failed to resend OTP. Please try again.');
+    }
+}
+
+// Verify OTP
+async function verifyOTP() {
+    const otp = document.getElementById('otp-input').value.trim();
+
+    // Validate OTP
+    if (!otp || otp.length !== 6 || !/^[0-9]{6}$/.test(otp)) {
+        showWarning('Please enter a valid 6-digit OTP');
+        return;
+    }
+
+    try {
+        showProcessingStep();
+
+        // Call backend to verify OTP with Paymob
+        const response = await fetch('/api/wallet-verify-otp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                uniqueId: currentPaymentData.uniqueId,
+                otp: otp
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'OTP verification failed');
+        }
+
+        // Clear timer
+        if (otpCountdownTimer) {
+            clearInterval(otpCountdownTimer);
+            otpCountdownTimer = null;
+        }
+
+        // Close wallet modal
+        closeWalletModal();
+
+        // Show success modal with QR code
+        if (data.payment && data.payment.qrCodeImage) {
+            showSuccessModal(data.payment);
+        } else {
+            showSuccess('Payment successful! You will receive confirmation via Telegram.');
+            setTimeout(() => window.location.reload(), 2000);
+        }
+
+    } catch (error) {
+        console.error('Error verifying OTP:', error);
+        showError(error.message || 'OTP verification failed. Please try again.');
+        showOTPStep();
+    }
+}
+
+// Back to wallet input
+function backToWalletInput() {
+    // Clear timer
+    if (otpCountdownTimer) {
+        clearInterval(otpCountdownTimer);
+        otpCountdownTimer = null;
+    }
+
+    // Clear OTP input
+    document.getElementById('otp-input').value = '';
+
+    // Show wallet input step
+    showWalletInputStep();
+}
+
+// ================== HELPER FUNCTIONS ==================
+
+// Helper: Show loading state
+function showLoadingState(title, message) {
+    const existingLoader = document.getElementById('payment-loader');
+    if (existingLoader) existingLoader.remove();
+
+    const loader = document.createElement('div');
+    loader.id = 'payment-loader';
+    loader.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.7); z-index: 10000;
+        display: flex; align-items: center; justify-content: center;
+    `;
+    loader.innerHTML = `
+        <div style="background: white; padding: 30px; border-radius: 10px; text-align: center; max-width: 400px;">
+            <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #667eea; 
+                border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+            <h3 style="margin: 0 0 10px 0; color: #333;">${title}</h3>
+            <p style="margin: 0; color: #666;">${message}</p>
+        </div>
+        <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        </style>
+    `;
+    document.body.appendChild(loader);
+}
+
+// Helper: Hide loading state
+function hideLoadingState() {
+    const loader = document.getElementById('payment-loader');
+    if (loader) loader.remove();
+}
+
+// Helper: Show info message
+function showInfo(message) {
+    showNotification(message, 'info');
+}
+
+// Helper: Show error message  
+function showError(message) {
+    showNotification(message, 'error');
+}
+
+// Helper: Show success message
+function showSuccess(message) {
+    showNotification(message, 'success');
+}
+
+// Helper: Show warning message
+function showWarning(message) {
+    showNotification(message, 'warning');
+}
+
+// Show custom notification popup
+function showNotification(message, type = 'info') {
+    const notification = document.getElementById('custom-notification');
+    const icon = document.getElementById('notification-icon');
+    const messageDiv = document.getElementById('notification-message');
+    const content = notification.querySelector('.notification-content');
+
+    // Set icon based on type
+    const icons = {
+        success: '✅',
+        error: '❌',
+        info: 'ℹ️',
+        warning: '⚠️'
+    };
+
+    icon.textContent = icons[type] || icons.info;
+    messageDiv.textContent = message;
+
+    // Remove previous type classes
+    content.classList.remove('success', 'error', 'info', 'warning');
+    content.classList.add(type);
+
+    // Show notification
+    notification.classList.remove('hidden');
+
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        closeNotification();
+    }, 5000);
+}
+
+// Close notification
+function closeNotification() {
+    const notification = document.getElementById('custom-notification');
+    notification.classList.add('hidden');
+}

@@ -119,6 +119,16 @@ const Payment = sequelize.define('Payment', {
         type: DataTypes.STRING,
         allowNull: true
     },
+    referralCode: {
+        type: DataTypes.STRING(8),
+        allowNull: true,
+        comment: 'Admin referral code used for this payment'
+    },
+    referredBy: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        comment: 'Admin username who referred this payment'
+    },
     ipAddress: {
         type: DataTypes.STRING,
         allowNull: true

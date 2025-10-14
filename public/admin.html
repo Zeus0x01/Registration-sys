@@ -37,6 +37,7 @@
 
         <!-- Dashboard (Hidden initially) -->
         <div id="dashboard-section" class="hidden">
+            <!-- Main Content Card -->
             <div class="card">
                 <div class="dashboard-header">
                     <h1>👨‍💼 Admin Dashboard</h1>
@@ -49,9 +50,43 @@
                 <div id="dashboard-error" class="message error hidden"></div>
                 <div id="dashboard-success" class="message success hidden"></div>
 
+                <!-- Admin Profile Section - Top of Dashboard -->
+                <div id="admin-profile" class="section" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+                        <div style="flex: 1; min-width: 250px;">
+                            <h2 style="margin: 0 0 10px 0; color: white; font-size: 24px; font-weight: 600;">👤 Welcome back!</h2>
+                            <div id="profile-info" style="font-size: 16px; line-height: 1.5; opacity: 0.9;">
+                                <div style="margin-bottom: 5px;"><strong>Name:</strong> <span id="profile-name"></span></div>
+                                <div style="margin-bottom: 5px;"><strong>Username:</strong> <span id="profile-username"></span></div>
+                                <div><strong>Email:</strong> <span id="profile-email"></span></div>
+                            </div>
+                        </div>
+                        <div style="flex: 1; min-width: 300px; text-align: center;">
+                            <div style="background: rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 20px; backdrop-filter: blur(10px);">
+                                <h3 style="margin: 0 0 15px 0; color: white; font-size: 18px;">🔗 Your Referral Link</h3>
+                                <div id="profile-referral-link" style="margin-bottom: 15px; word-break: break-all; font-size: 14px; font-weight: 500;"></div>
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;">
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 28px; font-weight: bold; color: #ffd700;">🏆</div>
+                                        <div style="font-size: 24px; font-weight: bold; margin-top: 5px;"><span id="profile-referral-count">0</span></div>
+                                        <div style="font-size: 12px; opacity: 0.8; margin-top: 2px;">Approved Referrals</div>
+                                    </div>
+                                    <button onclick="copyReferralLink()" style="background: rgba(255, 255, 255, 0.2); border: 2px solid white; color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 255, 255, 0.3)'"
+                                        onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'">
+                                            📋 Copy Link
+                                        </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Settings Form -->
                 <div class="section">
-                    <h2>⚙️ Payment Settings</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2>⚙️ Payment Settings</h2>
+                        <button class="btn btn-danger btn-small" onclick="logout()" title="Logout from admin panel">🚪 Logout</button>
+                    </div>
                     <form id="settings-form">
                         <div class="form-group">
                             <label for="price">Default Price (EGP) *</label>
@@ -80,66 +115,212 @@
                     </form>
                 </div>
 
-                <!-- Payment Statistics -->
+                <!-- Referral Leaderboard -->
                 <div class="section">
-                    <h2>📊 Payment Statistics</h2>
-                    <div id="statistics-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
-                        <div class="stat-card">
-                            <div class="stat-label">💰 Total Money</div>
-                            <div class="stat-value" id="stat-total-money">0 EGP</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">✅ Approved</div>
-                            <div class="stat-value" id="stat-approved">0</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">📝 Total Payments</div>
-                            <div class="stat-value" id="stat-total">0</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">🎫 Checked In</div>
-                            <div class="stat-value" id="stat-checkedin">0</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">⏳ Pending</div>
-                            <div class="stat-value" id="stat-pending">0</div>
-                        </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2>🏆 Referral Leaderboard</h2>
                     </div>
+                    <div id="referral-leaderboard" style="margin-bottom: 20px;"></div>
                 </div>
 
                 <!-- Payments List -->
                 <div class="section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
                         <h2>💳 Recent Payments</h2>
-                        <div>
-                            <button class="btn btn-danger btn-small" onclick="archiveAllPayments()" title="Archive all payments and clear table" style="margin-right: 10px;">📦 Archive All</button>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-success btn-small" onclick="exportToCSV()" title="Export to CSV">📥 Export CSV</button>
+                            <button class="btn btn-danger btn-small" onclick="archiveAllPayments()" title="Archive all payments and clear table">📦 Archive All</button>
                             <button class="btn btn-primary btn-small" onclick="loadPayments()" title="Refresh payments list">🔄 Refresh</button>
                         </div>
                     </div>
+
+                    <!-- Advanced Filtering Panel -->
+                    <div class="filter-panel" id="filter-panel" style="display: none;">
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Date Range</label>
+                                <input type="date" id="filter-date-from" placeholder="From Date">
+                            </div>
+                            <div class="filter-group">
+                                <label>To Date</label>
+                                <input type="date" id="filter-date-to" placeholder="To Date">
+                            </div>
+                            <div class="filter-group">
+                                <label>Status</label>
+                                <select id="filter-status">
+                                    <option value="">All Statuses</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="failed">Failed</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>Payment Method</label>
+                                <select id="filter-method">
+                                    <option value="">All Methods</option>
+                                    <option value="paymob-wallet">Mobile Wallet</option>
+                                    <option value="paymob-card">Card/Debit</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Amount Range (EGP)</label>
+                                <input type="number" id="filter-amount-min" placeholder="Min Amount" step="0.01">
+                            </div>
+                            <div class="filter-group">
+                                <label>Max Amount</label>
+                                <input type="number" id="filter-amount-max" placeholder="Max Amount" step="0.01">
+                            </div>
+                            <div class="filter-group">
+                                <label>Approval Status</label>
+                                <select id="filter-approved">
+                                    <option value="">All</option>
+                                    <option value="true">Approved</option>
+                                    <option value="false">Pending Approval</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>Check-in Status</label>
+                                <select id="filter-checkedin">
+                                    <option value="">All</option>
+                                    <option value="true">Checked In</option>
+                                    <option value="false">Not Checked In</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="filter-actions">
+                            <button class="btn btn-secondary btn-small" onclick="clearFilters()">Clear Filters</button>
+                            <button class="btn btn-primary btn-small" onclick="applyFilters()">Apply Filters</button>
+                        </div>
+                    </div>
+
+                    <!-- Search and Controls -->
+                    <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 250px;">
+                            <input type="text" id="search-input" placeholder="🔍 Search by name, email, phone, or unique ID..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;" oninput="searchPayments()">
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button class="btn btn-secondary btn-small" onclick="toggleFilterPanel()" title="Show/Hide Advanced Filters">🔍 Filters</button>
+                        </div>
+                        <div id="bulk-actions" style="display: none; gap: 10px; align-items: center;">
+                            <span id="selected-count" style="font-weight: 600; color: #667eea;">0 selected</span>
+                            <button class="btn btn-success btn-small" onclick="bulkApprove()">✅ Approve</button>
+                            <button class="btn btn-warning btn-small" onclick="bulkArchive()">📦 Archive</button>
+                            <button class="btn btn-danger btn-small" onclick="bulkDelete()">🗑️ Delete</button>
+                            <button class="btn btn-secondary btn-small" onclick="clearSelection()">Clear</button>
+                        </div>
+                    </div>
+
+                    <!-- Column Customization Dropdown -->
+                    <div class="column-dropdown" id="column-dropdown">
+                        <div class="column-dropdown-content" id="column-dropdown-content">
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-checkbox" checked onchange="toggleColumn('checkbox')">
+                                <label for="col-checkbox">Checkbox</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-number" checked onchange="toggleColumn('number')">
+                                <label for="col-number">#</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-name" checked onchange="toggleColumn('name')">
+                                <label for="col-name">Name</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-email" checked onchange="toggleColumn('email')">
+                                <label for="col-email">Email</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-phone" checked onchange="toggleColumn('phone')">
+                                <label for="col-phone">Phone</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-amount" checked onchange="toggleColumn('amount')">
+                                <label for="col-amount">Amount</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-method" checked onchange="toggleColumn('method')">
+                                <label for="col-method">Method</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-status" checked onchange="toggleColumn('status')">
+                                <label for="col-status">Status</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-uniqueid" checked onchange="toggleColumn('uniqueid')">
+                                <label for="col-uniqueid">Unique ID</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-approved" checked onchange="toggleColumn('approved')">
+                                <label for="col-approved">Approved</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-checkedin" checked onchange="toggleColumn('checkedin')">
+                                <label for="col-checkedin">Checked In</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-date" checked onchange="toggleColumn('date')">
+                                <label for="col-date">Date</label>
+                            </div>
+                            <div class="column-checkbox">
+                                <input type="checkbox" id="col-actions" checked onchange="toggleColumn('actions')">
+                                <label for="col-actions">Actions</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pagination Controls -->
+                    <div class="pagination-container" id="pagination-container" style="display: none;">
+                        <div class="pagination-info" id="pagination-info">
+                            Showing 1-10 of 50 payments
+                        </div>
+                        <div class="pagination-controls">
+                            <div class="page-size-selector">
+                                <label>Show:</label>
+                                <select id="page-size-select" onchange="changePageSize()">
+                                    <option value="10">10</option>
+                                    <option value="25" selected>25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                                <span>per page</span>
+                            </div>
+                            <div class="pagination-buttons" id="pagination-buttons">
+                                <button class="pagination-btn" onclick="goToPage(1)" id="first-page">«</button>
+                                <button class="pagination-btn" onclick="goToPage(-1)" id="prev-page">‹</button>
+                                <span id="page-numbers"></span>
+                                <button class="pagination-btn" onclick="goToPage(1)" id="next-page">›</button>
+                                <button class="pagination-btn" onclick="goToPage(-1)" id="last-page">»</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="table-responsive">
-                        <table id="payments-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Name</th>
-                                    <th>Email</th>
-                                    <th>Phone</th>
-                                    <th>Amount</th>
-                                    <th>Method</th>
-                                    <th>Status</th>
-                                    <th>Unique ID</th>
-                                    <th>Approved</th>
-                                    <th>Checked In</th>
-                                    <th>Date</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="payments-tbody">
-                                <tr>
-                                    <td colspan="11" class="text-center">Loading...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                            <table id="payments-table" class="modern-dashboard-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px;"><input type="checkbox" id="select-all" onchange="toggleSelectAll()" title="Select all"></th>
+                                        <th style="width:40px;">#</th>
+                                        <th style="min-width:120px;">Name</th>
+                                        <th style="min-width:180px;">Email</th>
+                                        <th style="min-width:120px;">Phone</th>
+                                        <th style="width:90px;">Amount</th>
+                                        <th style="width:110px;">Method</th>
+                                        <th style="width:100px;">Status</th>
+                                        <th style="width:110px;">Unique ID</th>
+                                        <th style="width:90px;">Approved</th>
+                                        <th style="width:110px;">Checked In</th>
+                                        <th style="min-width:120px;">Date</th>
+                                        <th style="min-width:120px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="payments-tbody">
+                                    <tr>
+                                        <td colspan="13" class="text-center" style="background: #f8fafc; color: #667eea; font-size: 18px; font-weight: 500;">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                     </div>
                 </div>
 
@@ -149,11 +330,12 @@
                         <h2>📦 Archived Payments</h2>
                         <button class="btn btn-secondary btn-small" onclick="toggleArchivedSection()" id="toggle-archived-btn">Show Archived</button>
                     </div>
-                    <div id="archived-section" style="display: none;">
+                    <div id="archived-section" class="hidden">
                         <div class="table-responsive">
                             <table id="archived-table">
                                 <thead>
                                     <tr>
+                                        <th><input type="checkbox" id="select-all-archived" onchange="toggleSelectAllArchived()" title="Select all"></th>
                                         <th>#</th>
                                         <th>Name</th>
                                         <th>Email</th>
@@ -166,11 +348,12 @@
                                         <th>Checked In</th>
                                         <th>Archived Date</th>
                                         <th>Archived By</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="archived-tbody">
                                     <tr>
-                                        <td colspan="12" class="text-center">No archived payments</td>
+                                        <td colspan="14" class="text-center">Loading archived payments...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -181,7 +364,12 @@
         </div>
     </div>
 
-    <script src="js/admin.js"></script>
+    <script src="js/notifications.js"></script>
+    <!-- <script src="js/admin.js"></script> -->
+    <script src="js/login.js"></script>
+    <script src="js/admin-enhanced.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="js/table-resize.js"></script>
 </body>
 
 </html>

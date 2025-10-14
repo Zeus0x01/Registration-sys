@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +11,7 @@
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -20,7 +21,7 @@
             align-items: center;
             padding: 20px;
         }
-
+        
         .container {
             background: white;
             border-radius: 20px;
@@ -30,33 +31,49 @@
             width: 100%;
             text-align: center;
         }
-
+        
         .icon {
             font-size: 80px;
             margin-bottom: 20px;
         }
-
-        .success .icon { color: #10b981; }
-        .error .icon { color: #ef4444; }
-        .pending .icon { color: #f59e0b; }
-
+        
+        .success .icon {
+            color: #10b981;
+        }
+        
+        .error .icon {
+            color: #ef4444;
+        }
+        
+        .pending .icon {
+            color: #f59e0b;
+        }
+        
         h1 {
             color: #333;
             margin-bottom: 15px;
             font-size: 32px;
         }
-
-        .success h1 { color: #10b981; }
-        .error h1 { color: #ef4444; }
-        .pending h1 { color: #f59e0b; }
-
+        
+        .success h1 {
+            color: #10b981;
+        }
+        
+        .error h1 {
+            color: #ef4444;
+        }
+        
+        .pending h1 {
+            color: #f59e0b;
+        }
+        
         .message {
             color: #666;
             font-size: 18px;
             line-height: 1.6;
             margin-bottom: 30px;
         }
-
+        
         .details {
             background: #f8f9fa;
             border-radius: 10px;
@@ -64,28 +81,28 @@
             margin-bottom: 30px;
             text-align: left;
         }
-
+        
         .detail-row {
             display: flex;
             justify-content: space-between;
             padding: 10px 0;
             border-bottom: 1px solid #e0e0e0;
         }
-
+        
         .detail-row:last-child {
             border-bottom: none;
         }
-
+        
         .detail-label {
             font-weight: 600;
             color: #555;
         }
-
+        
         .detail-value {
             color: #333;
             font-family: monospace;
         }
-
+        
         .btn {
             display: inline-block;
             padding: 15px 40px;
@@ -98,21 +115,21 @@
             transition: transform 0.2s, box-shadow 0.2s;
             margin: 10px;
         }
-
+        
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
         }
-
+        
         .btn-secondary {
             background: #6c757d;
         }
-
+        
         .loading {
             text-align: center;
             padding: 40px;
         }
-
+        
         .spinner {
             border: 4px solid #f3f3f3;
             border-top: 4px solid #667eea;
@@ -122,12 +139,16 @@
             animation: spin 1s linear infinite;
             margin: 0 auto 20px;
         }
-
+        
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
         }
-
+        
         .info-box {
             background: #e7f3ff;
             border-left: 4px solid #2196F3;
@@ -136,7 +157,7 @@
             border-radius: 4px;
             text-align: left;
         }
-
+        
         .info-box p {
             color: #333;
             font-size: 14px;
@@ -144,6 +165,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container" id="content">
         <div class="loading">
@@ -155,7 +177,7 @@
     <script>
         // Parse URL parameters from Paymob callback
         const urlParams = new URLSearchParams(window.location.search);
-        
+
         // Extract payment information
         const success = urlParams.get('success');
         const txnResponseCode = urlParams.get('txn_response_code');
@@ -172,7 +194,7 @@
 
         function displayResult() {
             const container = document.getElementById('content');
-            
+
             if (success === 'true' && txnResponseCode === 'APPROVED') {
                 // Payment successful
                 container.innerHTML = `
@@ -286,4 +308,5 @@
         console.log('Payment Response Parameters:', Object.fromEntries(urlParams));
     </script>
 </body>
+
 </html>

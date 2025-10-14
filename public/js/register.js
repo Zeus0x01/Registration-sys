@@ -24,6 +24,12 @@ function showSuccess(message) {
     successDiv.classList.remove('hidden');
 }
 
+// Get referral code from URL if present
+function getReferralCode() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('ref') || '';
+}
+
 // Handle form submission
 document.getElementById('register-form').addEventListener('submit', async(e) => {
     e.preventDefault();
@@ -37,9 +43,9 @@ document.getElementById('register-form').addEventListener('submit', async(e) => 
         email: document.getElementById('email').value.trim(),
         password: document.getElementById('password').value,
         confirmPassword: document.getElementById('confirmPassword').value,
-        fullName: document.getElementById('fullName').value.trim()
+        fullName: document.getElementById('fullName').value.trim(),
+        referralCode: getReferralCode()
     };
-
     // Validation
     if (formData.username.length < 3) {
         showError('Username must be at least 3 characters long');

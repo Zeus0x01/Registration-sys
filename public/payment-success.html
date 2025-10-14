@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Processing - Event Registration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        
+        .success {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .success.show {
+            display: flex;
+        }
+        
+        .icon {
+            font-size: 80px;
+            animation: bounce 0.5s ease;
+        }
+        
+        @keyframes bounce {
+            0%,
+            100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.2);
+            }
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .message {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .qr-container {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+        }
+        
+        .qr-container img {
+            max-width: 300px;
+            width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .unique-id {
+            background: #667eea;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 18px;
+            font-weight: bold;
+            margin: 20px 0;
+            letter-spacing: 2px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: left;
+            margin: 20px 0;
+        }
+        
+        .info-box p {
+            margin: 8px 0;
+            color: #1565c0;
+        }
+        
+        .info-box strong {
+            color: #0d47a1;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .error {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .error.show {
+            display: flex;
+        }
+        
+        .error .icon {
+            color: #f44336;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 30px 20px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+            .qr-container img {
+                max-width: 250px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Loading State -->
+        <div class="loading" id="loading-state">
+            <div class="spinner"></div>
+            <h1>Processing Your Payment</h1>
+            <p class="message">
+                Please wait while we verify your payment with Paymob.<br> This usually takes 5-10 seconds...
+            </p>
+        </div>
+
+        <!-- Success State -->
+        <div class="success" id="success-state">
+            <div class="icon">✅</div>
+            <h1>Payment Successful!</h1>
+            <p class="message">
+                Your payment has been processed successfully. Here is your event ticket with QR code.
+            </p>
+
+            <div class="qr-container">
+                <img id="qr-code-image" src="" alt="Event QR Code">
+            </div>
+
+            <div class="unique-id" id="unique-id-display">LOADING...</div>
+
+            <div class="info-box">
+                <p><strong>📌 Important:</strong></p>
+                <p>• Save this QR code for check-in at the event</p>
+                <p>• You can download it using the button below</p>
+                <p>• A copy has been sent to your Telegram</p>
+                <p>• Admin will review and approve shortly</p>
+            </div>
+
+            <button class="btn" onclick="downloadQR()">📥 Download QR Code</button>
+            <a href="/payment.html" class="btn btn-secondary">Make Another Payment</a>
+        </div>
+
+        <!-- Error State -->
+        <div class="error" id="error-state">
+            <div class="icon">❌</div>
+            <h1>Payment Verification Failed</h1>
+            <p class="message" id="error-message">
+                We couldn't verify your payment. Please contact support.
+            </p>
+            <a href="/payment.html" class="btn">Try Again</a>
+        </div>
+    </div>
+
+    <script>
+        // Get uniqueId from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const uniqueId = urlParams.get('uniqueId');
+
+        if (!uniqueId) {
+            showError('Invalid payment reference. Please try again.');
+        } else {
+            // Start polling for payment completion
+            pollPaymentStatus();
+        }
+
+        let pollAttempts = 0;
+        const maxAttempts = 60; // Poll for 60 seconds (60 attempts x 1 second)
+
+        async function pollPaymentStatus() {
+            try {
+                const response = await fetch(`/api/payments/${uniqueId}`);
+                const data = await response.json();
+
+                if (data.success && data.payment) {
+                    const payment = data.payment;
+
+                    // Check if payment is completed and has QR code
+                    if (payment.paymentStatus === 'completed' && payment.qrCodeImage) {
+                        showSuccess(payment);
+                        return; // Stop polling
+                    }
+
+                    // Check if payment is approved (alternative success state)
+                    if (payment.approved && payment.qrCodeImage) {
+                        showSuccess(payment);
+                        return; // Stop polling
+                    }
+                }
+
+                // Continue polling if not completed yet
+                pollAttempts++;
+                if (pollAttempts < maxAttempts) {
+                    setTimeout(pollPaymentStatus, 1000); // Poll every 1 second
+                } else {
+                    // Timeout - payment taking too long
+                    showError('Payment verification is taking longer than expected. Please check your dashboard or contact support.');
+                }
+
+            } catch (error) {
+                console.error('Poll error:', error);
+                pollAttempts++;
+                if (pollAttempts < maxAttempts) {
+                    setTimeout(pollPaymentStatus, 1000);
+                } else {
+                    showError('Unable to verify payment status. Please contact support.');
+                }
+            }
+        }
+
+        function showSuccess(payment) {
+            document.getElementById('loading-state').style.display = 'none';
+            document.getElementById('error-state').classList.remove('show');
+
+            const successState = document.getElementById('success-state');
+            document.getElementById('qr-code-image').src = payment.qrCodeImage;
+            document.getElementById('unique-id-display').textContent = payment.uniqueId;
+
+            successState.classList.add('show');
+        }
+
+        function showError(message) {
+            document.getElementById('loading-state').style.display = 'none';
+            document.getElementById('success-state').classList.remove('show');
+
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error-state').classList.add('show');
+        }
+
+        function downloadQR() {
+            const qrImage = document.getElementById('qr-code-image');
+            const uniqueId = document.getElementById('unique-id-display').textContent;
+
+            const link = document.createElement('a');
+            link.download = `event-ticket-${uniqueId}.png`;
+            link.href = qrImage.src;
+            link.click();
+        }
+    </script>
+</body>
+
+</html>

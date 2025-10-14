@@ -27,6 +27,30 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Admin authentication middleware
+function authenticateAdmin(req, res, next) {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+
+    const token = authHeader.substring(7);
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-for-development');
+
+        if (decoded.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+
+        req.admin = decoded;
+        next();
+    } catch (error) {
+        return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+}
+
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -129,7 +153,7 @@ app.post('/api/admin/login', async(req, res) => {
                 email: admin.email,
                 role: 'admin'
             },
-            process.env.JWT_SECRET, { expiresIn: '1d' }
+            process.env.JWT_SECRET || 'fallback-secret-key-for-development', { expiresIn: '1d' }
         );
 
         res.json({
@@ -143,6 +167,94 @@ app.post('/api/admin/login', async(req, res) => {
         });
     } catch (error) {
         console.error('Login error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Verify Admin Token Endpoint
+app.get('/api/admin/verify-token', async(req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        
+        if (!token) {
+            return res.status(401).json({ valid: false, message: 'No token provided' });
+        }
+        
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-for-development');
+        
+        // Check if admin exists and is active
+        const admin = await Admin.findByPk(decoded.id);
+        
+        if (!admin || !admin.isActive) {
+            return res.status(401).json({ valid: false, message: 'Invalid or inactive account' });
+        }
+        
+        return res.json({ 
+            valid: true, 
+            admin: {
+                username: admin.username,
+                email: admin.email,
+                fullName: admin.fullName
+            }
+        });
+    } catch (error) {
+        console.error('Token verification error:', error);
+        return res.status(401).json({ valid: false, message: 'Invalid token' });
+    }
+});
+
+// Get Admin Payments
+app.get('/api/admin/payments', authenticateAdmin, async(req, res) => {
+    try {
+        // Get all payments
+        const payments = await Payment.findAll({
+            order: [['createdAt', 'DESC']]
+        });
+        
+        // Calculate stats
+        const totalPayments = payments.length;
+        const totalAmount = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+        const pendingPayments = payments.filter(p => p.status === 'pending').length;
+        const completedPayments = payments.filter(p => p.status === 'completed').length;
+        
+        res.json({
+            success: true,
+            payments,
+            stats: {
+                totalPayments,
+                totalAmount,
+                pendingPayments,
+                completedPayments
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching payments:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Get current admin details
+app.get('/api/admin/me', authenticateAdmin, async(req, res) => {
+    try {
+        const admin = await Admin.findByPk(req.admin.id);
+        if (!admin) {
+            return res.status(404).json({ success: false, message: 'Admin not found' });
+        }
+
+        res.json({
+            success: true,
+            admin: {
+                id: admin.id,
+                username: admin.username,
+                email: admin.email,
+                fullName: admin.fullName,
+                referralCode: admin.referralCode,
+                isActive: admin.isActive,
+                lastLogin: admin.lastLogin
+            }
+        });
+    } catch (error) {
+        console.error('Get admin details error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });

@@ -62,13 +62,6 @@
                     </div>
                 </div>
 
-                <!-- Mobile Wallet Number Field (Hidden by default) -->
-                <div id="wallet-fields" class="form-group hidden">
-                    <label for="walletNumber">Mobile Wallet Number *</label>
-                    <input type="tel" id="walletNumber" name="walletNumber" placeholder="01xxxxxxxxx" maxlength="11">
-                    <small>Enter your mobile wallet number (11 digits)</small>
-                </div>
-
                 <button type="submit" class="btn btn-primary" id="submit-btn">
                     Proceed to Payment
                 </button>
@@ -76,11 +69,100 @@
         </div>
     </div>
 
-    <!-- Paymob Iframe Modal -->
+    <!-- Paymob Card Iframe Modal -->
     <div id="paymob-modal" class="modal hidden">
         <div class="modal-content modal-iframe">
             <span class="modal-close" onclick="closePaymobModal()">&times;</span>
             <iframe id="paymob-iframe" frameborder="0"></iframe>
+        </div>
+    </div>
+
+    <!-- Custom Mobile Wallet Payment Modal -->
+    <div id="wallet-modal" class="modal hidden">
+        <div class="modal-content wallet-payment-modal">
+            <span class="modal-close" onclick="closeWalletModal()">&times;</span>
+
+            <div class="wallet-payment-container">
+                <div class="wallet-header">
+                    <h2>📱 Mobile Wallet Payment</h2>
+                    <p class="amount-display">Amount: <strong id="wallet-amount">0</strong> EGP</p>
+                </div>
+
+                <!-- Wallet Input Step -->
+                <div id="wallet-input-step" class="wallet-form">
+                    <div class="form-group">
+                        <label for="wallet-number-input">Mobile Wallet Number *</label>
+                        <input type="tel" id="wallet-number-input" placeholder="01xxxxxxxxx" maxlength="11" pattern="[0-9]{11}" required>
+                        <small>Enter your Vodafone Cash, Orange Cash, or Etisalat Cash number</small>
+                    </div>
+
+                    <div class="wallet-providers">
+                        <div class="provider-item">
+                            <img src="https://via.placeholder.com/60x40/e60000/ffffff?text=Vodafone" alt="Vodafone Cash">
+                            <span>Vodafone Cash</span>
+                        </div>
+                        <div class="provider-item">
+                            <img src="https://via.placeholder.com/60x40/ff6600/ffffff?text=Orange" alt="Orange Cash">
+                            <span>Orange Cash</span>
+                        </div>
+                        <div class="provider-item">
+                            <img src="https://via.placeholder.com/60x40/009900/ffffff?text=Etisalat" alt="Etisalat Cash">
+                            <span>Etisalat Cash</span>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        <p><strong>ℹ️ Instructions:</strong></p>
+                        <p>1. Enter your mobile wallet number</p>
+                        <p>2. You'll receive an OTP on your phone</p>
+                        <p>3. Enter the OTP to confirm payment</p>
+                    </div>
+
+                    <button type="button" class="btn btn-primary btn-block" onclick="processWalletPayment()">
+                        Continue to Payment
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-block" onclick="closeWalletModal()">
+                        Cancel
+                    </button>
+                </div>
+
+                <!-- OTP Step (Hidden initially) -->
+                <div id="otp-step" class="wallet-form hidden">
+                    <div class="otp-header">
+                        <div class="success-icon-small">✓</div>
+                        <p>OTP sent to <strong id="otp-phone-display"></strong></p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="otp-input">Enter OTP *</label>
+                        <input type="text" id="otp-input" placeholder="Enter 6-digit OTP" maxlength="6" pattern="[0-9]{6}" class="otp-input">
+                        <small>Check your phone for the verification code</small>
+                    </div>
+
+                    <div class="otp-timer">
+                        <p>Code expires in: <span id="otp-countdown">120</span>s</p>
+                        <button type="button" class="btn-link" onclick="resendOTP()" id="resend-btn" disabled>
+                            Resend OTP
+                        </button>
+                    </div>
+
+                    <button type="button" class="btn btn-primary btn-block" onclick="verifyOTP()">
+                        Verify & Pay
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-block" onclick="backToWalletInput()">
+                        Change Number
+                    </button>
+                </div>
+
+                <!-- Processing Step -->
+                <div id="processing-step" class="wallet-form hidden">
+                    <div class="processing-animation">
+                        <div class="spinner"></div>
+                        <h3>Processing Payment...</h3>
+                        <p>Please wait while we confirm your transaction</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -109,6 +191,16 @@
         </div>
     </div>
 
+    <!-- Custom Notification Popup -->
+    <div id="custom-notification" class="custom-notification hidden">
+        <div class="notification-content">
+            <span class="notification-icon" id="notification-icon"></span>
+            <div class="notification-message" id="notification-message"></div>
+            <button class="notification-close" onclick="closeNotification()">&times;</button>
+        </div>
+    </div>
+
+    <script src="js/notifications.js"></script>
     <script src="js/payment.js"></script>
 </body>
 

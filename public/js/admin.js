@@ -1,698 +1,1524 @@
-let authToken = null;
-let refreshInterval = null;
-
-// Check if already logged in
-document.addEventListener('DOMContentLoaded', () => {
-    authToken = localStorage.getItem('adminToken');
-
-    if (authToken) {
-        showDashboard();
-    } else {
-        showLogin();
+// Toggle visibility of archived payments section
+function toggleArchivedSection() {
+    const archivedSection = document.getElementById('archived-section');
+    if (archivedSection) {
+        archivedSection.classList.toggle('hidden');
     }
-});
-
-// Show/Hide sections
-function showLogin() {
-    document.getElementById('login-section').classList.remove('hidden');
-    document.getElementById('dashboard-section').classList.add('hidden');
 }
+const express = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
+const crypto = require('crypto');
+const QRCode = require('qrcode');
 
-function showDashboard() {
-    document.getElementById('login-section').classList.add('hidden');
-    document.getElementById('dashboard-section').classList.remove('hidden');
+const Settings = require('../models/Settings');
+const Wallet = require('../models/Wallet');
+const Payment = require('../models/Payment');
+const Admin = require('../models/Admin');
 
-    loadSettings();
-    loadStatistics();
-    loadPayments();
+// Import Telegram notification function
+const { sendTelegramNotification } = require('../telegram-bot');
 
-    // Auto-refresh payments and statistics every 10 seconds
-    if (refreshInterval) clearInterval(refreshInterval);
-    refreshInterval = setInterval(() => {
-        loadStatistics();
-        loadPayments();
-    }, 10000);
-}
+// Middleware: Authenticate Admin
+function authenticateAdmin(req, res, next) {
+    const authHeader = req.headers.authorization;
 
-// Show error message
-function showError(message, elementId = 'login-error') {
-    const errorDiv = document.getElementById(elementId);
-    errorDiv.textContent = message;
-    errorDiv.classList.remove('hidden');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'No token provided' });
+    }
 
-    setTimeout(() => {
-        errorDiv.classList.add('hidden');
-    }, 5000);
-}
-
-// Show success message
-function showSuccess(message) {
-    const successDiv = document.getElementById('dashboard-success');
-    successDiv.textContent = message;
-    successDiv.classList.remove('hidden');
-
-    setTimeout(() => {
-        successDiv.classList.add('hidden');
-    }, 3000);
-}
-
-// Handle login
-document.getElementById('login-form').addEventListener('submit', async(e) => {
-    e.preventDefault();
-
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
+    const token = authHeader.substring(7);
 
     try {
-        const response = await fetch('/api/admin/login', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ username, password })
-        });
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-for-development');
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Login failed');
+        if (decoded.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Access denied' });
         }
 
-        authToken = data.token;
-        localStorage.setItem('adminToken', authToken);
-
-        showDashboard();
+        req.user = decoded;
+        next();
     } catch (error) {
-        console.error('Login error:', error);
-        showError(error.message || 'Login failed. Please try again.');
+        return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+}
+
+// Generate unique 8-character alphanumeric ID
+function generateUniqueId() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 8; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
+
+// Generate HMAC for QR code
+function generateHMAC(data) {
+    return crypto.createHmac('sha256', process.env.HMAC_SECRET).update(data).digest('hex');
+}
+
+// Verify Paymob webhook HMAC
+function verifyPaymobHMAC(data) {
+    const {
+        amount_cents,
+        created_at,
+        currency,
+        error_occured,
+        has_parent_transaction,
+        id,
+        integration_id,
+        is_3d_secure,
+        is_auth,
+        is_capture,
+        is_refunded,
+        is_standalone_payment,
+        is_voided,
+        order,
+        owner,
+        pending,
+        source_data_pan,
+        source_data_sub_type,
+        source_data_type,
+        success
+    } = data;
+
+    const concatenatedString = [
+        amount_cents,
+        created_at,
+        currency,
+        error_occured,
+        has_parent_transaction,
+        id,
+        integration_id,
+        is_3d_secure,
+        is_auth,
+        is_capture,
+        is_refunded,
+        is_standalone_payment,
+        is_voided,
+        order,
+        owner,
+        pending,
+        source_data_pan,
+        source_data_sub_type,
+        source_data_type,
+        success
+    ].join('');
+
+    const expectedHmac = crypto.createHmac('sha256', process.env.PAYMOB_HMAC_SECRET)
+        .update(concatenatedString)
+        .digest('hex');
+
+    return expectedHmac === data.hmac;
+}
+
+// GET /settings/public - Get public settings (isActive status)
+router.get('/settings/public', async(req, res) => {
+    try {
+        const settings = await Settings.findByPk(1);
+
+        if (!settings) {
+            return res.status(404).json({ success: false, message: 'Settings not found' });
+        }
+
+        res.json({
+            success: true,
+            isActive: settings.isActive,
+            price: settings.price,
+            priceOptions: settings.priceOptions
+        });
+    } catch (error) {
+        console.error('Get settings error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Load settings
-async function loadSettings() {
+// POST /payments - Create payment with Paymob Intention API
+router.post('/payments', async(req, res) => {
     try {
-        const response = await fetch('/api/settings', {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const { userName, userEmail, userPhone, paymentMethod, selectedPriceIndex } = req.body;
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to load settings');
+        // Validate input
+        if (!userName || !userEmail || !userPhone || !paymentMethod) {
+            return res.status(400).json({ success: false, message: 'All fields are required' });
         }
 
-        // Remove .00 if it's a whole number
-        const price = parseFloat(data.settings.price);
-        document.getElementById('price').value = price % 1 === 0 ? parseInt(price) : price;
-        document.getElementById('isActive').value = data.settings.isActive.toString();
+        if (!['paymob-wallet', 'paymob-card'].includes(paymentMethod)) {
+            return res.status(400).json({ success: false, message: 'Invalid payment method' });
+        }
 
-        // Load price options
-        window.priceOptionsData = [];
-        if (data.settings.priceOptions) {
+        // No wallet number validation - user enters it directly in Paymob's checkout
+
+        // Check if system is active
+        const settings = await Settings.findByPk(1);
+        if (!settings || !settings.isActive) {
+            return res.status(403).json({ success: false, message: 'Payment system is currently inactive' });
+        }
+
+        // Determine the price to use
+        let priceToUse = settings.price;
+        let priceLabel = 'Default';
+
+        // Check if a price option was selected
+        if (selectedPriceIndex !== undefined && selectedPriceIndex !== null) {
             try {
-                window.priceOptionsData = JSON.parse(data.settings.priceOptions);
-                renderPriceOptions();
-            } catch (e) {
-                console.error('Error parsing price options:', e);
+                const priceOptions = JSON.parse(settings.priceOptions);
+                if (Array.isArray(priceOptions) && priceOptions[selectedPriceIndex]) {
+                    priceToUse = parseFloat(priceOptions[selectedPriceIndex].amount);
+                    priceLabel = priceOptions[selectedPriceIndex].label;
+                }
+            } catch (error) {
+                console.error('Error parsing price options:', error);
             }
         }
 
-    } catch (error) {
-        console.error('Load settings error:', error);
-        showError(error.message || 'Failed to load settings', 'dashboard-error');
-    }
-}
-
-// Add price option
-function addPriceOption() {
-    window.priceOptionsData = window.priceOptionsData || [];
-    window.priceOptionsData.push({ label: '', amount: 0 });
-    renderPriceOptions();
-}
-
-// Remove price option
-function removePriceOption(index) {
-    window.priceOptionsData.splice(index, 1);
-    renderPriceOptions();
-}
-
-// Render price options
-function renderPriceOptions() {
-    const container = document.getElementById('price-options-container');
-    if (!window.priceOptionsData || window.priceOptionsData.length === 0) {
-        container.innerHTML = '<p style="color: #666; font-size: 14px; margin: 0;">No price options added. Add options for users to choose from.</p>';
-        return;
-    }
-
-    container.innerHTML = window.priceOptionsData.map((option, index) => `
-        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-            <input type="text" placeholder="Label (e.g., Regular, VIP)" value="${escapeHtml(option.label || '')}" 
-                onchange="window.priceOptionsData[${index}].label = this.value" 
-                style="flex: 1; padding: 8px; border: 2px solid #e0e0e0; border-radius: 8px;">
-            <input type="number" placeholder="Amount" value="${option.amount || 0}" step="0.01" min="0"
-                onchange="window.priceOptionsData[${index}].amount = parseFloat(this.value)" 
-                style="width: 120px; padding: 8px; border: 2px solid #e0e0e0; border-radius: 8px;">
-            <button type="button" class="btn btn-danger btn-small" onclick="removePriceOption(${index})" title="Remove">✕</button>
-        </div>
-    `).join('');
-}
-
-// Handle settings form submission
-document.getElementById('settings-form').addEventListener('submit', async(e) => {
-    e.preventDefault();
-
-    const price = document.getElementById('price').value;
-    const isActive = document.getElementById('isActive').value;
-    const priceOptions = JSON.stringify(window.priceOptionsData || []);
-
-    try {
-        const response = await fetch('/api/settings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ price, isActive, priceOptions })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to update settings');
+        if (priceToUse <= 0) {
+            return res.status(400).json({ success: false, message: 'Invalid price configuration' });
         }
 
-        showSuccess('Settings updated successfully!');
+        // Get client IP and user agent
+        const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+
+        // Generate unique ID
+        let uniqueId;
+        let isUnique = false;
+        while (!isUnique) {
+            uniqueId = generateUniqueId();
+            const existing = await Payment.findOne({ where: { uniqueId } });
+            if (!existing) isUnique = true;
+        }
+
+        // Create payment record first (before Paymob API calls)
+        const payment = await Payment.create({
+            userName,
+            userEmail,
+            userPhone,
+            amount: priceToUse,
+            paymentMethod,
+            walletNumber: null, // Will be filled when user completes payment in Paymob
+            paymentStatus: 'pending',
+            uniqueId,
+            ipAddress,
+            userAgent,
+            referralCode: req.body.referralCode || null
+        });
+
+        // Validate referral code and set referredBy if valid
+        if (req.body.referralCode) {
+            const referringAdmin = await Admin.findOne({
+                where: { referralCode: req.body.referralCode }
+            });
+            if (referringAdmin) {
+                payment.referredBy = referringAdmin.username;
+                await payment.save();
+            }
+        }
+
+        // Create or update wallet (mock)
+        await Wallet.upsert({
+            userEmail,
+            userPhone,
+            balance: 1000.00,
+            currency: 'EGP'
+        });
+
+        // For wallet payments, return without iframe URL (will use custom modal)
+        if (paymentMethod === 'paymob-wallet') {
+            res.json({
+                success: true,
+                payment: {
+                    id: payment.id,
+                    uniqueId: payment.uniqueId,
+                    amount: payment.amount,
+                    paymentMethod: payment.paymentMethod
+                },
+                useIframe: false // Custom wallet modal will be used
+            });
+            return;
+        }
+
+        // For card payments, use Intention API to generate payment URL
+        const amountCents = Math.round(parseFloat(priceToUse) * 100);
+
+        // Get base URL for callbacks
+        const baseUrl = process.env.WEBHOOK_URL ?
+            process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
+            `http://localhost:${process.env.PORT || 5000}`;
+
+        // Split name into first and last
+        const nameParts = userName.split(' ');
+        const firstName = nameParts[0] || userName;
+        const lastName = nameParts.slice(1).join(' ') || userName;
+
+        // Create Intention API request for card payment
+        const intentionPayload = {
+            amount: amountCents,
+            currency: "EGP",
+            payment_methods: [parseInt(process.env.PAYMOB_INTEGRATION_ID_CARD)], // Card integration ID
+            items: [{
+                name: "Event Registration",
+                amount: amountCents,
+                description: `Registration for ${userName}`,
+                quantity: 1
+            }],
+            billing_data: {
+                apartment: "NA",
+                first_name: firstName,
+                last_name: lastName,
+                street: "NA",
+                building: "NA",
+                phone_number: userPhone,
+                country: "EG",
+                email: userEmail,
+                floor: "NA",
+                state: "NA"
+            },
+            customer: {
+                first_name: firstName,
+                last_name: lastName,
+                email: userEmail,
+                phone_number: userPhone
+            },
+            extras: {
+                ee: uniqueId, // Store uniqueId for reference
+                merchant_order_id: uniqueId
+            },
+            redirection_url: `${baseUrl}/payment-redirect.html?uniqueId=${uniqueId}`,
+            notification_url: `${baseUrl}/api/paymob-webhook`, // CRITICAL: Tell Paymob where to send transaction notifications
+            special_reference: uniqueId // Additional reference
+        };
+
+        console.log('Creating Intention API payment (card):', JSON.stringify(intentionPayload, null, 2));
+
+        try {
+            // Call Paymob Intention API
+            const intentionResponse = await axios.post(
+                `${process.env.PAYMOB_API_URL}/v1/intention/`,
+                intentionPayload, {
+                    headers: {
+                        'Authorization': `Token ${process.env.PAYMOB_SECRET_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            console.log('Paymob Intention API response (card):', JSON.stringify(intentionResponse.data, null, 2));
+
+            const intentionData = intentionResponse.data;
+
+            // Update payment with Paymob intention data
+            await payment.update({
+                paymentId: intentionData.id ? .toString() || uniqueId,
+                paymobData: JSON.stringify({
+                    intentionId: intentionData.id,
+                    clientSecret: intentionData.client_secret,
+                    paymentMethods: intentionData.payment_methods,
+                    intentionResponse: intentionData
+                })
+            });
+
+            // For card payments with Intention API, use Unified Checkout with client_secret
+            // The client_secret is the payment token that works with Unified Checkout
+            const clientSecret = intentionData.client_secret;
+
+            if (!clientSecret) {
+                throw new Error('No client_secret returned from Paymob Intention API');
+            }
+
+            // Unified Checkout URL (works with Intention API's client_secret)
+            const paymentUrl = `https://accept.paymob.com/unifiedcheckout/?publicKey=${process.env.PAYMOB_PUBLIC_KEY}&clientSecret=${clientSecret}`;
+
+            res.json({
+                success: true,
+                payment: {
+                    id: payment.id,
+                    uniqueId: payment.uniqueId,
+                    amount: payment.amount,
+                    paymentMethod: payment.paymentMethod
+                },
+                useIframe: true,
+                paymentUrl
+            });
+
+        } catch (error) {
+            console.error('Intention API error (card):', error.response ? .data || error.message);
+
+            // If Intention API fails, fall back to old API
+            console.log('Falling back to old API for card payment...');
+
+            // Old API flow as fallback
+            const authResponse = await axios.post(`${process.env.PAYMOB_API_URL}/api/auth/tokens`, {
+                api_key: process.env.PAYMOB_API_KEY
+            });
+            const authToken = authResponse.data.token;
+
+            const orderResponse = await axios.post(`${process.env.PAYMOB_API_URL}/api/ecommerce/orders`, {
+                auth_token: authToken,
+                delivery_needed: false,
+                amount_cents: amountCents,
+                currency: 'EGP',
+                items: []
+            });
+            const orderId = orderResponse.data.id;
+
+            const paymentKeyResponse = await axios.post(`${process.env.PAYMOB_API_URL}/api/acceptance/payment_keys`, {
+                auth_token: authToken,
+                amount_cents: amountCents,
+                expiration: 3600,
+                order_id: orderId,
+                billing_data: {
+                    apartment: 'NA',
+                    email: userEmail,
+                    floor: 'NA',
+                    first_name: firstName,
+                    last_name: lastName,
+                    street: 'NA',
+                    building: 'NA',
+                    phone_number: userPhone,
+                    shipping_method: 'NA',
+                    postal_code: 'NA',
+                    city: 'Cairo',
+                    country: 'EG',
+                    state: 'NA'
+                },
+                currency: 'EGP',
+                integration_id: parseInt(process.env.PAYMOB_INTEGRATION_ID_CARD),
+                notification_url: `${baseUrl}/api/paymob-webhook`,
+                redirection_url: `${baseUrl}/payment-response.html`
+            });
+
+            const paymentToken = paymentKeyResponse.data.token;
+            const iframeId = process.env.PAYMOB_IFRAME_ID_CARD;
+            const paymentUrl = `${process.env.PAYMOB_API_URL}/api/acceptance/iframes/${iframeId}?payment_token=${paymentToken}`;
+
+            await payment.update({
+                paymentId: orderId.toString(),
+                paymobData: JSON.stringify(paymentKeyResponse.data)
+            });
+
+            res.json({
+                success: true,
+                payment: {
+                    id: payment.id,
+                    uniqueId: payment.uniqueId,
+                    amount: payment.amount,
+                    paymentMethod: payment.paymentMethod
+                },
+                useIframe: true,
+                paymentUrl
+            });
+        }
+
+    } catch (error) {
+        console.error('Payment creation error:', error.response ? .data || error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create payment',
+            error: error.response ? .data ? .detail || error.response ? .data ? .message || error.message
+        });
+    }
+});
+
+// GET /payments/statistics - Get payment statistics (admin only)
+// NOTE: This must be BEFORE /payments/:uniqueId to avoid matching "statistics" as a uniqueId
+router.get('/payments/statistics', authenticateAdmin, async(req, res) => {
+    try {
+        const { Op } = require('sequelize');
+
+        // Count approved and valid payments (not archived)
+        const approvedCount = await Payment.count({
+            where: {
+                approved: true,
+                [Op.or]: [
+                    { archived: false },
+                    { archived: null }
+                ]
+            }
+        });
+
+        // Calculate total money from approved payments (not archived)
+        const totalResult = await Payment.sum('amount', {
+            where: {
+                approved: true,
+                [Op.or]: [
+                    { archived: false },
+                    { archived: null }
+                ]
+            }
+        });
+
+        const totalMoney = totalResult || 0;
+
+        // Get total payments (not archived)
+        const totalPayments = await Payment.count({
+            where: {
+                [Op.or]: [
+                    { archived: false },
+                    { archived: null }
+                ]
+            }
+        });
+
+        // Get checked-in count (not archived)
+        const checkedInCount = await Payment.count({
+            where: {
+                checkedIn: true,
+                [Op.or]: [
+                    { archived: false },
+                    { archived: null }
+                ]
+            }
+        });
+
+        // Get all admins and their referral stats
+        const Admin = require('../models/Admin');
+        const admins = await Admin.findAll();
+        const referralStats = [];
+        for (const admin of admins) {
+            // Count approved payments referred by this admin (not archived)
+            const referralCount = await Payment.count({
+                where: {
+                    approved: true,
+                    referralCode: admin.referralCode,
+                    [Op.or]: [
+                        { archived: false },
+                        { archived: null }
+                    ]
+                }
+            });
+            referralStats.push({
+                username: admin.username,
+                fullName: admin.fullName,
+                referralCode: admin.referralCode,
+                referralCount
+            });
+        }
+
+        res.json({
+            success: true,
+            statistics: {
+                approvedCount,
+                totalMoney: parseFloat(totalMoney) % 1 === 0 ? parseInt(totalMoney) : parseFloat(totalMoney).toFixed(2),
+                totalPayments,
+                checkedInCount,
+                pendingApproval: totalPayments - approvedCount,
+                referralStats
+            }
+        });
+    } catch (error) {
+        console.error('Get statistics error:', error);
+        res.status(500).json({ success: false, message: 'Failed to get statistics' });
+    }
+});
+
+// GET /payments/archived - List all archived payments (admin only)
+// NOTE: This must be BEFORE /payments/:uniqueId to avoid matching "archived" as a uniqueId
+router.get('/payments/archived', authenticateAdmin, async(req, res) => {
+    try {
+        const payments = await Payment.findAll({
+            where: {
+                archived: true
+            },
+            order: [
+                ['archivedAt', 'DESC'] // Most recently archived first
+            ],
+            attributes: [
+                'id', 'userName', 'userEmail', 'userPhone', 'amount',
+                'paymentMethod', 'paymentStatus', 'uniqueId', 'verified',
+                'checkedIn', 'createdAt', 'qrCodeImage', 'approved', 'approvedAt', 'approvedBy',
+                'archived', 'archivedAt', 'archivedBy'
+            ]
+        });
+
+        res.json({ success: true, payments });
+    } catch (error) {
+        console.error('List archived payments error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// GET /payments/:uniqueId - Get payment status for polling
+router.get('/payments/:uniqueId', async(req, res) => {
+    try {
+        const { uniqueId } = req.params;
+
+        const payment = await Payment.findOne({ where: { uniqueId } });
+
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: 'Payment not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            payment: {
+                uniqueId: payment.uniqueId,
+                paymentStatus: payment.paymentStatus,
+                verified: payment.verified,
+                amount: payment.amount,
+                qrCodeImage: payment.qrCodeImage,
+                createdAt: payment.createdAt
+            }
+        });
+    } catch (error) {
+        console.error('Get payment error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get payment status'
+        });
+    }
+});
+
+// POST /wallet-pay-direct - Create wallet payment and return checkout URL directly (simplified flow)
+router.post('/wallet-pay-direct', async(req, res) => {
+    try {
+        const { uniqueId } = req.body;
+
+        if (!uniqueId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment ID is required'
+            });
+        }
+
+        // Find the payment
+        const payment = await Payment.findOne({ where: { uniqueId } });
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: 'Payment not found'
+            });
+        }
+
+        // NOTE: NOT pre-filling phone number - user enters wallet number in Paymob checkout
+        // This avoids phone format issues and lets Paymob handle wallet number validation
+        console.log('Skipping phone pre-fill - user will enter wallet number in Paymob checkout');
+
+        // Calculate amount in cents
+        const amountCents = Math.round(payment.amount * 100);
+
+        // Get base URL for callbacks
+        const baseUrl = process.env.WEBHOOK_URL ?
+            process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
+            `http://localhost:${process.env.PORT || 5000}`;
+
+        // Split name into first and last
+        const nameParts = payment.userName.split(' ');
+        const firstName = nameParts[0] || payment.userName;
+        const lastName = nameParts.slice(1).join(' ') || payment.userName;
+
+        // Create Intention API request WITHOUT phone number pre-fill
+        // User will enter their wallet number directly in Paymob's checkout
+        const intentionPayload = {
+            amount: amountCents,
+            currency: "EGP",
+            payment_methods: [parseInt(process.env.PAYMOB_INTEGRATION_ID_WALLET)],
+            items: [{
+                name: "Event Registration",
+                amount: amountCents,
+                description: `Registration for ${payment.userName}`,
+                quantity: 1
+            }],
+            billing_data: {
+                apartment: "NA",
+                first_name: firstName,
+                last_name: lastName,
+                street: "NA",
+                building: "NA",
+                phone_number: "+20", // Empty - user will enter in checkout
+                country: "EG",
+                email: payment.userEmail,
+                floor: "NA",
+                state: "NA"
+            },
+            customer: {
+                first_name: firstName,
+                last_name: lastName,
+                email: payment.userEmail,
+                phone_number: "+20" // Empty - user will enter in checkout
+            },
+            extras: {
+                ee: uniqueId
+            },
+            notification_url: `${baseUrl}/api/paymob-webhook`, // Webhook for transaction callbacks
+            redirection_url: `${baseUrl}/payment-response.html`,
+            special_reference: uniqueId
+        };
+
+        console.log('Creating Intention API payment (direct - NO phone pre-fill):', JSON.stringify(intentionPayload, null, 2));
+
+        // Call Paymob Intention API
+        const intentionResponse = await axios.post(
+            `${process.env.PAYMOB_API_URL}/v1/intention/`,
+            intentionPayload, {
+                headers: {
+                    'Authorization': `Token ${process.env.PAYMOB_SECRET_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        console.log('Paymob Intention API response (direct):', JSON.stringify(intentionResponse.data, null, 2));
+
+        const intentionData = intentionResponse.data;
+
+        // Update payment with Paymob data
+        await payment.update({
+            paymentId: intentionData.id ? .toString() || uniqueId,
+            walletNumber: null, // Will be filled when user completes payment in Paymob
+            paymobData: JSON.stringify({
+                intentionId: intentionData.id,
+                clientSecret: intentionData.client_secret,
+                paymentMethods: intentionData.payment_methods,
+                intentionResponse: intentionData
+            }),
+            paymentStatus: 'pending'
+        });
+
+        // Generate unified checkout URL
+        if (intentionData.client_secret) {
+            const checkoutUrl = `${process.env.PAYMOB_API_URL}/unifiedcheckout/?publicKey=${process.env.PAYMOB_PUBLIC_KEY}&clientSecret=${intentionData.client_secret}`;
+
+            console.log('Unified checkout URL generated (direct):', checkoutUrl);
+
+            res.json({
+                success: true,
+                message: 'Payment initiated. Opening checkout...',
+                data: {
+                    pending: true,
+                    checkoutUrl: checkoutUrl,
+                    publicKey: process.env.PAYMOB_PUBLIC_KEY,
+                    clientSecret: intentionData.client_secret,
+                    intentionId: intentionData.id
+                }
+            });
+        } else {
+            throw new Error('Client secret not received from Paymob');
+        }
+
+    } catch (error) {
+        console.error('Wallet pay direct error:', error.response ? .data || error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create payment',
+            error: error.response ? .data ? .detail || error.response ? .data ? .message || error.message
+        });
+    }
+});
+
+// POST /wallet-pay - Process wallet payment using Intention API (New Unified Checkout)
+router.post('/wallet-pay', async(req, res) => {
+    try {
+        const { uniqueId, mobileNumber } = req.body;
+
+        if (!uniqueId || !mobileNumber) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment ID and mobile number are required'
+            });
+        }
+
+        // Find the payment
+        const payment = await Payment.findOne({ where: { uniqueId } });
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: 'Payment not found'
+            });
+        }
+
+        // Format mobile number - remove leading zero (01010101010 -> 1010101010)
+        let formattedNumber = mobileNumber;
+        if (mobileNumber.startsWith('0') && mobileNumber.length === 11) {
+            formattedNumber = mobileNumber.substring(1);
+            console.log(`Phone number formatted: ${mobileNumber} -> ${formattedNumber}`);
+        }
+
+        // Try with +20 country code format (international format)
+        const internationalPhone = `+20${formattedNumber}`;
+        console.log(`International format: ${internationalPhone}`);
+
+        // Update wallet number (store original with zero)
+        await payment.update({ walletNumber: mobileNumber });
+
+        // Calculate amount in cents
+        const amountCents = Math.round(payment.amount * 100);
+
+        // Get base URL for callbacks
+        const baseUrl = process.env.WEBHOOK_URL ?
+            process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
+            `http://localhost:${process.env.PORT || 5000}`;
+
+        // Split name into first and last
+        const nameParts = payment.userName.split(' ');
+        const firstName = nameParts[0] || payment.userName;
+        const lastName = nameParts.slice(1).join(' ') || payment.userName;
+
+        // Create Intention API request using new Unified Checkout with pre-filled phone
+        const intentionPayload = {
+            amount: amountCents,
+            currency: "EGP",
+            payment_methods: [parseInt(process.env.PAYMOB_INTEGRATION_ID_WALLET)], // Wallet integration ID
+            items: [{
+                name: "Event Registration",
+                amount: amountCents,
+                description: `Registration for ${payment.userName}`,
+                quantity: 1
+            }],
+            billing_data: {
+                apartment: "NA",
+                first_name: firstName,
+                last_name: lastName,
+                street: "NA",
+                building: "NA",
+                phone_number: "+20", // Empty - user enters in checkout
+                country: "EG",
+                email: payment.userEmail,
+                floor: "NA",
+                state: "NA"
+            },
+            customer: {
+                first_name: firstName,
+                last_name: lastName,
+                email: payment.userEmail,
+                phone_number: "+20" // Empty - user enters in checkout
+            },
+            extras: {
+                ee: uniqueId // Store uniqueId for reference
+            },
+            notification_url: `${baseUrl}/api/paymob-webhook`, // Webhook for transaction callbacks
+            redirection_url: `${baseUrl}/payment-response.html`,
+            special_reference: uniqueId // Additional reference
+        };
+
+        console.log('Creating Intention API payment:', JSON.stringify(intentionPayload, null, 2));
+
+        // Call Paymob Intention API
+        const intentionResponse = await axios.post(
+            `${process.env.PAYMOB_API_URL}/v1/intention/`,
+            intentionPayload, {
+                headers: {
+                    'Authorization': `Token ${process.env.PAYMOB_SECRET_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        console.log('Paymob Intention API response:', JSON.stringify(intentionResponse.data, null, 2));
+
+        const intentionData = intentionResponse.data;
+
+        // Update payment with Paymob intention data
+        await payment.update({
+            paymentId: intentionData.id ? .toString() || uniqueId,
+            paymobData: JSON.stringify({
+                intentionId: intentionData.id,
+                clientSecret: intentionData.client_secret,
+                paymentMethods: intentionData.payment_methods,
+                intentionResponse: intentionData
+            }),
+            paymentStatus: 'pending' // Set to pending, waiting for phone confirmation
+        });
+
+        // According to Paymob Intention API documentation:
+        // For wallet payments, return the checkout URL that should be opened in browser/webview
+        // URL format: https://accept.paymob.com/unifiedcheckout/?publicKey=<PUBLIC_KEY>&clientSecret=<CLIENT_SECRET>
+
+        if (intentionData.client_secret) {
+            // Generate unified checkout URL
+            const checkoutUrl = `${process.env.PAYMOB_API_URL}/unifiedcheckout/?publicKey=${process.env.PAYMOB_PUBLIC_KEY}&clientSecret=${intentionData.client_secret}`;
+
+            console.log('Unified checkout URL generated:', checkoutUrl);
+
+            res.json({
+                success: true,
+                message: 'Payment initiated. Opening checkout page...',
+                data: {
+                    pending: true,
+                    intentionId: intentionData.id,
+                    clientSecret: intentionData.client_secret,
+                    checkoutUrl: checkoutUrl, // Return checkout URL for frontend to open
+                    publicKey: process.env.PAYMOB_PUBLIC_KEY
+                }
+            });
+        } else {
+            res.json({
+                success: true,
+                message: 'Payment initiated. Please check your phone for confirmation.',
+                data: {
+                    pending: true,
+                    intentionId: intentionData.id
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error('Intention API error:', error.response ? .data || error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to process wallet payment',
+            error: error.response ? .data ? .detail || error.response ? .data ? .message || error.message
+        });
+    }
+});
+
+// POST /wallet-verify-otp - Verify OTP for wallet payment
+router.post('/wallet-verify-otp', async(req, res) => {
+    try {
+        const { uniqueId, otp } = req.body;
+
+        if (!uniqueId || !otp) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment ID and OTP are required'
+            });
+        }
+
+        // Find the payment
+        const payment = await Payment.findOne({ where: { uniqueId } });
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: 'Payment not found'
+            });
+        }
+
+        // Get payment data
+        const paymobData = JSON.parse(payment.paymobData || '{}');
+        const { paymentToken } = paymobData;
+
+        if (!paymentToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment token not found. Please restart payment process.'
+            });
+        }
+
+        // Verify OTP with Paymob
+        const verifyResponse = await axios.post(`${process.env.PAYMOB_API_URL}/api/acceptance/payments/pay`, {
+            source: {
+                identifier: payment.walletNumber,
+                subtype: 'WALLET'
+            },
+            payment_token: paymentToken,
+            otp
+        });
+
+        console.log('Paymob OTP verification response:', JSON.stringify(verifyResponse.data, null, 2));
+
+        // Check if payment was successful (Paymob returns different response structures)
+        const isSuccess = verifyResponse.data.success === true ||
+            verifyResponse.data.success === 'true' ||
+            verifyResponse.data.pending === false ||
+            (verifyResponse.data.id && !verifyResponse.data.error);
+
+        if (isSuccess) {
+            // Update payment status
+            await payment.update({
+                paymentStatus: 'completed',
+                verified: true,
+                verifiedAt: new Date(),
+                paymobData: JSON.stringify({
+                    ...paymobData,
+                    verifyResponse: verifyResponse.data
+                })
+            });
+
+            // Send notification
+            try {
+                await sendPaymentNotification(payment);
+            } catch (notifError) {
+                console.error('Notification error:', notifError);
+            }
+
+            res.json({
+                success: true,
+                message: 'Payment completed successfully',
+                payment: {
+                    uniqueId: payment.uniqueId,
+                    qrCodeImage: payment.qrCodeImage,
+                    amount: payment.amount
+                }
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: 'OTP verification failed',
+                error: verifyResponse.data
+            });
+        }
+
+    } catch (error) {
+        console.error('OTP verification error:', error.response ? .data || error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to verify OTP',
+            error: error.response ? .data ? .message || error.message
+        });
+    }
+});
+
+// POST /test-complete-payment - DEVELOPMENT ONLY: Manually complete a payment and send notification
+router.post('/test-complete-payment', async(req, res) => {
+    try {
+        const { uniqueId } = req.body;
+
+        if (!uniqueId) {
+            return res.status(400).json({ success: false, message: 'uniqueId is required' });
+        }
+
+        const payment = await Payment.findOne({ where: { uniqueId } });
+
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Payment not found' });
+        }
+
+        // Update payment status
+        payment.paymentStatus = 'completed';
+        payment.verified = true;
+        payment.verifiedAt = new Date();
+
+        // Generate QR code if not exists
+        if (!payment.qrCodeImage) {
+            const qrPayload = `${payment.uniqueId}:${generateHMAC(payment.uniqueId)}`;
+            payment.qrCodeData = qrPayload;
+            const qrCodeImage = await QRCode.toDataURL(qrPayload);
+            payment.qrCodeImage = qrCodeImage;
+        }
+
+        await payment.save();
+
+        // Send Telegram notification
+        await sendTelegramNotification(payment);
+
+        res.json({
+            success: true,
+            message: 'Payment completed and notification sent',
+            payment: {
+                uniqueId: payment.uniqueId,
+                status: payment.paymentStatus,
+                approved: payment.approved
+            }
+        });
+
+    } catch (error) {
+        console.error('Test complete payment error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /paymob-webhook - Handle Paymob webhook (supports both old API and Intention API)
+router.post('/paymob-webhook', async(req, res) => {
+    try {
+        const data = req.body;
+
+        console.log('Webhook received:', JSON.stringify(data, null, 2));
+
+        // Intention API sends transaction data in 'obj' field
+        // Look for payment reference in multiple places according to documentation
+        let payment = null;
+        let transactionSuccess = false;
+
+        // Check transaction success status
+        if (data.obj) {
+            transactionSuccess = data.obj.success === true || data.obj.success === 'true';
+        }
+
+        // Try to find payment by special_reference (set in Intention API)
+        if (data.obj && data.obj.merchant_order_id) {
+            // Intention API returns special_reference as merchant_order_id
+            const specialRef = data.obj.merchant_order_id;
+            payment = await Payment.findOne({ where: { uniqueId: specialRef } });
+            console.log(`Looking for payment by special_reference: ${specialRef}`);
+        }
+
+        // Try to find by extras.ee (alternative reference field)
+        if (!payment && data.obj && data.obj.payment_key_claims && data.obj.payment_key_claims.extra) {
+            const extras = data.obj.payment_key_claims.extra;
+            if (extras.ee) {
+                payment = await Payment.findOne({ where: { uniqueId: extras.ee } });
+                console.log(`Looking for payment by extras.ee: ${extras.ee}`);
+            }
+        }
+
+        // Fallback: Try to find by order ID (old API format)
+        if (!payment && data.obj && data.obj.order && data.obj.order.id) {
+            const orderId = data.obj.order.id.toString();
+            payment = await Payment.findOne({ where: { paymentId: orderId } });
+            console.log(`Looking for payment by order ID: ${orderId}`);
+        }
+
+        if (!payment) {
+            console.error('Payment not found in webhook. Data:', JSON.stringify(data, null, 2));
+            // Still return success to Paymob to avoid retries
+            return res.json({ success: true, message: 'Payment not found' });
+        }
+
+        // Update payment based on transaction status
+        if (transactionSuccess && data.type === 'TRANSACTION') {
+            console.log(`Payment found: ${payment.uniqueId}, updating to completed`);
+
+            // Update payment status
+            payment.paymentStatus = 'completed';
+            payment.verified = true;
+            payment.verifiedAt = new Date();
+            payment.paymobData = JSON.stringify(data);
+
+            // Generate QR code if not exists
+            if (!payment.qrCodeImage) {
+                const qrPayload = `${payment.uniqueId}:${generateHMAC(payment.uniqueId)}`;
+                payment.qrCodeData = qrPayload;
+                payment.qrCodeImage = await QRCode.toDataURL(qrPayload);
+            }
+
+            await payment.save();
+            await sendTelegramNotification(payment);
+            console.log('Payment completed and notification sent:', payment.uniqueId);
+
+        } else if (!transactionSuccess && data.obj) {
+            // Payment failed
+            console.log(`Payment failed: ${payment.uniqueId}`);
+            payment.paymentStatus = 'failed';
+            payment.paymobData = JSON.stringify(data);
+            await payment.save();
+        }
+
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error('Webhook processing error:', error);
+        res.status(500).json({ success: false, message: 'Webhook processing failed' });
+    }
+});
+
+// GET /payments/:uniqueId - Get payment details (admin only, or public with QR verification)
+router.get('/payments/:uniqueId', async(req, res) => {
+    try {
+        const { uniqueId } = req.params;
+        const { payload } = req.query;
+
+        const payment = await Payment.findOne({ where: { uniqueId } });
+
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Payment not found', valid: false });
+        }
+
+        // If payload provided, verify HMAC (public QR check)
+        if (payload) {
+            const [id, hmac] = payload.split(':');
+            const expectedHmac = generateHMAC(id);
+
+            if (id === uniqueId && hmac === expectedHmac && payment.paymentStatus === 'completed') {
+                return res.json({
+                    success: true,
+                    valid: true,
+                    details: {
+                        userName: payment.userName,
+                        amount: payment.amount,
+                        paymentMethod: payment.paymentMethod,
+                        verified: payment.verified,
+                        checkedIn: payment.checkedIn
+                    }
+                });
+            } else {
+                return res.json({ success: false, valid: false, message: 'Invalid QR code or payment not completed' });
+            }
+        }
+
+        // Check if this is a public polling request (from payment-success.html)
+        // Allow limited public access for status checking
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            // Public access - return only status and QR if completed
+            return res.json({
+                success: true,
+                payment: {
+                    uniqueId: payment.uniqueId,
+                    paymentStatus: payment.paymentStatus,
+                    approved: payment.approved,
+                    qrCodeImage: payment.qrCodeImage, // Only available if payment completed
+                }
+            });
+        }
+
+        // Admin authentication for full details
+        const token = authHeader.substring(7);
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            if (decoded.role !== 'admin') {
+                return res.status(403).json({ success: false, message: 'Access denied' });
+            }
+        } catch (error) {
+            return res.status(401).json({ success: false, message: 'Invalid token' });
+        }
+
+        // Return full payment details for admin
+        res.json({
+            success: true,
+            valid: payment.approved, // Changed: Check if approved instead of completed
+            payment: {
+                id: payment.id,
+                userName: payment.userName,
+                userEmail: payment.userEmail,
+                userPhone: payment.userPhone,
+                amount: payment.amount,
+                paymentMethod: payment.paymentMethod,
+                paymentStatus: payment.paymentStatus,
+                uniqueId: payment.uniqueId,
+                qrCodeImage: payment.qrCodeImage,
+                verified: payment.verified,
+                verifiedAt: payment.verifiedAt,
+                approved: payment.approved, // Add approved field
+                approvedAt: payment.approvedAt,
+                approvedBy: payment.approvedBy,
+                checkedIn: payment.checkedIn,
+                checkedInAt: payment.checkedInAt,
+                checkedInBy: payment.checkedInBy,
+                createdAt: payment.createdAt
+            }
+        });
+
+    } catch (error) {
+        console.error('Get payment error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// POST /payments/:uniqueId/checkin - Mark payment as checked in (admin only)
+router.post('/payments/:uniqueId/checkin', authenticateAdmin, async(req, res) => {
+    try {
+        const { uniqueId } = req.params;
+
+        const payment = await Payment.findOne({ where: { uniqueId } });
+
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Payment not found' });
+        }
+
+        // Check if payment is approved (new requirement)
+        if (!payment.approved) {
+            return res.status(400).json({ success: false, message: 'Payment not approved yet' });
+        }
+
+        // Allow check-in for approved payments (even if status is pending)
+        // Remove strict requirement for paymentStatus === 'completed'
+
+        if (payment.checkedIn) {
+            return res.status(400).json({ success: false, message: 'Already checked in' });
+        }
+
+        payment.checkedIn = true;
+        payment.checkedInAt = new Date();
+        payment.checkedInBy = req.user.username;
+        await payment.save();
+
+        // Send Telegram notification for check-in
+        if (bot && process.env.TELEGRAM_ORGANIZER_CHAT_ID) {
+            const message = `
+✅ *Check-In Successful!*
+
+👤 *Name:* ${payment.userName}
+📧 *Email:* ${payment.userEmail}
+🆔 *Unique ID:* \`${payment.uniqueId}\`
+💰 *Amount:* ${payment.amount} EGP
+⏰ *Check-In Time:* ${new Date().toLocaleString()}
+👨‍💼 *Staff:* ${req.user.username}
+            `.trim();
+
+            await bot.sendMessage(
+                process.env.TELEGRAM_ORGANIZER_CHAT_ID,
+                message, { parse_mode: 'Markdown' }
+            );
+        }
+
+        res.json({ success: true, message: 'Check-in successful', payment });
+
+    } catch (error) {
+        console.error('Check-in error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// GET /payments - List all payments (admin only)
+router.get('/payments', authenticateAdmin, async(req, res) => {
+    try {
+        const { Op } = require('sequelize');
+
+        const payments = await Payment.findAll({
+            where: {
+                [Op.and]: [{
+                        [Op.or]: [
+                            { archived: false },
+                            { archived: null }
+                        ]
+                    },
+                    // Only show payments that have been completed or verified
+                    {
+                        [Op.or]: [
+                            { paymentStatus: 'completed' },
+                            { verified: true }
+                        ]
+                    }
+                ]
+            },
+            order: [
+                ['id', 'DESC'] // Newest payments first (descending ID)
+            ],
+            attributes: [
+                'id', 'userName', 'userEmail', 'userPhone', 'amount',
+                'paymentMethod', 'paymentStatus', 'uniqueId', 'verified',
+                'checkedIn', 'checkedInAt', 'checkedInBy', 'createdAt', 'qrCodeImage',
+                'approved', 'approvedAt', 'approvedBy', 'archived'
+            ]
+        });
+
+        res.json({ success: true, payments });
+    } catch (error) {
+        console.error('List payments error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// POST /settings - Update settings (admin only)
+router.post('/settings', authenticateAdmin, async(req, res) => {
+    try {
+        const { price, isActive, priceOptions } = req.body;
+
+        const settings = await Settings.findByPk(1);
+
+        if (!settings) {
+            return res.status(404).json({ success: false, message: 'Settings not found' });
+        }
+
+        if (price !== undefined) {
+            const priceNum = parseFloat(price);
+            if (isNaN(priceNum) || priceNum < 0) {
+                return res.status(400).json({ success: false, message: 'Invalid price' });
+            }
+            settings.price = priceNum;
+        }
+
+        if (isActive !== undefined) {
+            settings.isActive = isActive === 'true' || isActive === true;
+        }
+
+        if (priceOptions !== undefined) {
+            settings.priceOptions = priceOptions;
+        }
+
+        await settings.save();
+
+        res.json({ success: true, settings });
     } catch (error) {
         console.error('Update settings error:', error);
-        showError(error.message || 'Failed to update settings', 'dashboard-error');
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Load statistics
-async function loadStatistics() {
+// GET /settings - Get settings (admin only)
+router.get('/settings', authenticateAdmin, async(req, res) => {
     try {
-        const response = await fetch(`/api/payments/statistics?t=${Date.now()}`, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const settings = await Settings.findByPk(1);
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to load statistics');
+        if (!settings) {
+            return res.status(404).json({ success: false, message: 'Settings not found' });
         }
 
-        const stats = data.statistics;
-        document.getElementById('stat-total-money').textContent = `${stats.totalMoney} EGP`;
-        document.getElementById('stat-approved').textContent = stats.approvedCount;
-        document.getElementById('stat-total').textContent = stats.totalPayments;
-        document.getElementById('stat-checkedin').textContent = stats.checkedInCount;
-        document.getElementById('stat-pending').textContent = stats.pendingApproval;
-
+        res.json({ success: true, settings });
     } catch (error) {
-        console.error('Load statistics error:', error);
+        console.error('Get settings error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
-}
+});
 
-// Load payments
-async function loadPayments() {
+// POST /payments/:id/send-telegram - Send payment to Telegram (admin only)
+router.post('/payments/:id/send-telegram', authenticateAdmin, async(req, res) => {
     try {
-        // Optional: Add a subtle loading indicator
-        const tbody = document.getElementById('payments-tbody');
-        const isFirstLoad = !window.paymentsData;
+        const payment = await Payment.findByPk(req.params.id);
 
-        if (isFirstLoad) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="11" class="text-center">Loading payments...</td>
-                </tr>
-            `;
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Payment not found' });
         }
 
-        // Add cache-busting parameter to ensure fresh data
-        const response = await fetch(`/api/payments?t=${Date.now()}`, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        // Send to Telegram
+        if (bot && process.env.TELEGRAM_ORGANIZER_CHAT_ID) {
+            const statusEmoji = payment.paymentStatus === 'completed' ? '✅' :
+                payment.paymentStatus === 'pending' ? '⏳' : '❌';
 
-        const data = await response.json();
+            const approvedEmoji = payment.approved ? '✅ Approved' : '⏳ Pending Approval';
 
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to load payments');
+            const message = `
+🔔 *Payment Details Sent from Dashboard*
+
+💳 *Payment ID:* ${payment.uniqueId}
+👤 *Name:* ${payment.userName}
+📧 *Email:* ${payment.userEmail}
+📱 *Phone:* ${payment.userPhone}
+💰 *Amount:* ${payment.amount} EGP
+💳 *Method:* ${payment.paymentMethod === 'paymob-wallet' ? '📱 Mobile Wallet' : '💳 Card/Debit'}
+📅 *Date:* ${new Date(payment.createdAt).toLocaleString()}
+
+*Status:* ${statusEmoji} ${payment.paymentStatus}
+*Approval:* ${approvedEmoji}
+*Check-in:* ${payment.checkedIn ? '✅ Checked In' : '⏳ Not Yet'}
+            `.trim();
+
+            // Add inline keyboard for approval if not approved
+            const keyboard = payment.approved ? null : {
+                inline_keyboard: [
+                    [
+                        { text: '✅ Approve Payment', callback_data: `approve_${payment.id}` }
+                    ]
+                ]
+            };
+
+            await bot.sendMessage(
+                process.env.TELEGRAM_ORGANIZER_CHAT_ID,
+                message, { parse_mode: 'Markdown', reply_markup: keyboard }
+            );
         }
 
-        renderPayments(data.payments);
-
+        res.json({ success: true, message: 'Payment sent to Telegram successfully' });
     } catch (error) {
-        console.error('Load payments error:', error);
-        document.getElementById('payments-tbody').innerHTML = `
-            <tr>
-                <td colspan="11" class="text-center error">Failed to load payments</td>
-            </tr>
-        `;
+        console.error('Send to Telegram error:', error);
+        res.status(500).json({ success: false, message: 'Failed to send to Telegram' });
     }
-}
+});
 
-// Render payments table
-function renderPayments(payments) {
-    const tbody = document.getElementById('payments-tbody');
-
-    if (!payments || payments.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="11" class="text-center">No payments found</td>
-            </tr>
-        `;
-        return;
-    }
-
-    // Store payments for sorting
-    window.paymentsData = payments;
-
-    // Render rows
-    tbody.innerHTML = payments.map((payment, index) => {
-        const rowNumber = index + 1; // Row 1 = newest
-
-        const statusClass = payment.paymentStatus === 'completed' ? 'status-completed' :
-            payment.paymentStatus === 'pending' ? 'status-pending' :
-            'status-failed';
-
-        const checkedInIcon = payment.checkedIn ? '✅' : '⏳';
-        const approvedIcon = payment.approved ? '✅' : '⏳';
-
-        const date = new Date(payment.createdAt).toLocaleString();
-
-        // Show approve button only if not approved
-        const approveButton = payment.approved ?
-            `<span class="status status-completed">✅ Approved</span>` :
-            `<button class="btn btn-small btn-success" onclick="approvePayment(${payment.id})">✅ Approve</button>`;
-
-        return `
-            <tr>
-                <td>${rowNumber}</td>
-                <td>${escapeHtml(payment.userName)}</td>
-                <td>${escapeHtml(payment.userEmail)}</td>
-                <td>${escapeHtml(payment.userPhone)}</td>
-                <td>${payment.amount} EGP</td>
-                <td>${formatPaymentMethod(payment.paymentMethod)}</td>
-                <td><span class="status ${statusClass}">${payment.paymentStatus}</span></td>
-                <td><code>${payment.uniqueId}</code></td>
-                <td>${approvedIcon}</td>
-                <td>${checkedInIcon}</td>
-                <td>${date}</td>
-                <td>
-                    <div class="action-buttons">
-                        ${approveButton}
-                        <button class="btn btn-small btn-danger" onclick="archivePayment(${payment.id})" title="Archive this payment">📦</button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    // Make headers sortable
-    makeHeadersSortable();
-}
-
-// Make table headers sortable
-function makeHeadersSortable() {
-    const headers = document.querySelectorAll('#payments-table thead th');
-
-    headers.forEach((header, index) => {
-        // Skip action column
-        if (index === headers.length - 1) return;
-
-        header.classList.add('sortable');
-        header.onclick = () => sortTable(index, header);
-    });
-}
-
-// Sort table by column
-let currentSortColumn = -1;
-let currentSortDirection = 'asc';
-
-function sortTable(columnIndex, headerElement) {
-    const payments = window.paymentsData;
-    if (!payments) return;
-
-    // Toggle sort direction
-    if (currentSortColumn === columnIndex) {
-        currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
-    } else {
-        currentSortDirection = 'asc';
-        currentSortColumn = columnIndex;
-    }
-
-    // Remove sort classes from all headers
-    document.querySelectorAll('#payments-table thead th').forEach(th => {
-        th.classList.remove('sorted-asc', 'sorted-desc');
-    });
-
-    // Add sort class to current header
-    headerElement.classList.add(currentSortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
-
-    // Sort data
-    const sortedPayments = [...payments].sort((a, b) => {
-        let aVal, bVal;
-
-        switch (columnIndex) {
-            case 0: // Row number (reverse of index)
-                return currentSortDirection === 'asc' ?
-                    payments.indexOf(a) - payments.indexOf(b) :
-                    payments.indexOf(b) - payments.indexOf(a);
-            case 1: // Name
-                aVal = a.userName.toLowerCase();
-                bVal = b.userName.toLowerCase();
-                break;
-            case 2: // Email
-                aVal = a.userEmail.toLowerCase();
-                bVal = b.userEmail.toLowerCase();
-                break;
-            case 3: // Phone
-                aVal = a.userPhone;
-                bVal = b.userPhone;
-                break;
-            case 4: // Amount
-                aVal = parseFloat(a.amount);
-                bVal = parseFloat(b.amount);
-                break;
-            case 5: // Method
-                aVal = a.paymentMethod;
-                bVal = b.paymentMethod;
-                break;
-            case 6: // Status
-                aVal = a.paymentStatus;
-                bVal = b.paymentStatus;
-                break;
-            case 7: // Unique ID
-                aVal = a.uniqueId;
-                bVal = b.uniqueId;
-                break;
-            case 8: // Approved
-                aVal = a.approved ? 1 : 0;
-                bVal = b.approved ? 1 : 0;
-                break;
-            case 9: // Checked In
-                aVal = a.checkedIn ? 1 : 0;
-                bVal = b.checkedIn ? 1 : 0;
-                break;
-            case 10: // Date
-                aVal = new Date(a.createdAt).getTime();
-                bVal = new Date(b.createdAt).getTime();
-                break;
-            default:
-                return 0;
-        }
-
-        if (aVal < bVal) return currentSortDirection === 'asc' ? -1 : 1;
-        if (aVal > bVal) return currentSortDirection === 'asc' ? 1 : -1;
-        return 0;
-    });
-
-    // Re-render with sorted data
-    const tbody = document.getElementById('payments-tbody');
-    tbody.innerHTML = sortedPayments.map((payment, index) => {
-        const rowNumber = index + 1;
-
-        const statusClass = payment.paymentStatus === 'completed' ? 'status-completed' :
-            payment.paymentStatus === 'pending' ? 'status-pending' :
-            'status-failed';
-
-        const checkedInIcon = payment.checkedIn ? '✅' : '⏳';
-        const approvedIcon = payment.approved ? '✅' : '⏳';
-
-        const date = new Date(payment.createdAt).toLocaleString();
-
-        const approveButton = payment.approved ?
-            `<span class="status status-completed">✅ Approved</span>` :
-            `<button class="btn btn-small btn-success" onclick="approvePayment(${payment.id})">✅ Approve</button>`;
-
-        return `
-            <tr>
-                <td>${rowNumber}</td>
-                <td>${escapeHtml(payment.userName)}</td>
-                <td>${escapeHtml(payment.userEmail)}</td>
-                <td>${escapeHtml(payment.userPhone)}</td>
-                <td>${payment.amount} EGP</td>
-                <td>${formatPaymentMethod(payment.paymentMethod)}</td>
-                <td><span class="status ${statusClass}">${payment.paymentStatus}</span></td>
-                <td><code>${payment.uniqueId}</code></td>
-                <td>${approvedIcon}</td>
-                <td>${checkedInIcon}</td>
-                <td>${date}</td>
-                <td>
-                    <div class="action-buttons">
-                        ${approveButton}
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-// Format payment method
-function formatPaymentMethod(method) {
-    const methods = {
-        'paymob-wallet': '📱 Mobile Wallet',
-        'paymob-card': '💳 Card/Debit'
-    };
-    return methods[method] || method;
-}
-
-// Escape HTML to prevent XSS
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Approve payment (no confirmation prompt)
-async function approvePayment(paymentId) {
+// POST /payments/:id/approve - Approve payment (admin only)
+router.post('/payments/:id/approve', authenticateAdmin, async(req, res) => {
     try {
-        const response = await fetch(`/api/payments/${paymentId}/approve`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const payment = await Payment.findByPk(req.params.id);
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to approve payment');
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Payment not found' });
         }
 
-        showSuccess('✅ Payment approved successfully!');
-        loadStatistics(); // Reload statistics
-        loadPayments(); // Reload table
+        if (payment.approved) {
+            return res.json({ success: true, message: 'Payment already approved' });
+        }
+
+        // Approve payment AND mark as completed
+        payment.approved = true;
+        payment.approvedAt = new Date();
+        payment.approvedBy = req.user.username; // From JWT token
+        payment.paymentStatus = 'completed'; // Mark as completed
+        payment.verified = true;
+        payment.verifiedAt = new Date();
+
+        // Generate QR code if not already generated
+        if (!payment.qrCodeImage) {
+            const qrPayload = `${payment.uniqueId}:${generateHMAC(payment.uniqueId)}`;
+            payment.qrCodeData = qrPayload;
+
+            // Generate QR code image (base64)
+            const QRCode = require('qrcode');
+            const qrCodeImage = await QRCode.toDataURL(qrPayload);
+            payment.qrCodeImage = qrCodeImage;
+        }
+
+        await payment.save();
+
+        // Send confirmation to Telegram
+        if (bot && process.env.TELEGRAM_ORGANIZER_CHAT_ID) {
+            const message = `
+✅ *Payment Approved & Completed!*
+
+💳 *Payment ID:* \`${payment.uniqueId}\`
+👤 *Name:* ${payment.userName}
+📧 *Email:* ${payment.userEmail}
+💰 *Amount:* ${payment.amount} EGP
+👨‍💼 *Approved By:* ${req.user.username}
+📅 *Approved At:* ${new Date().toLocaleString()}
+
+✅ *Status:* Completed
+🎫 *QR Code:* Generated
+            `.trim();
+
+            await bot.sendMessage(
+                process.env.TELEGRAM_ORGANIZER_CHAT_ID,
+                message, { parse_mode: 'Markdown' }
+            );
+        }
+
+        res.json({ success: true, message: 'Payment approved successfully', payment });
     } catch (error) {
         console.error('Approve payment error:', error);
-        showError(error.message || 'Failed to approve payment', 'dashboard-error');
+        res.status(500).json({ success: false, message: 'Failed to approve payment' });
     }
-}
+});
 
-// Archive a single payment
-async function archivePayment(paymentId) {
+// POST /payments/:uniqueId/archive - Archive a payment (admin only)
+router.post('/payments/:uniqueId/archive', authenticateAdmin, async(req, res) => {
     try {
-        const response = await fetch(`/api/payments/${paymentId}/archive`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const payment = await Payment.findOne({ where: { uniqueId: req.params.uniqueId } });
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to archive payment');
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Payment not found' });
         }
 
-        showSuccess('📦 Payment archived successfully!');
-        loadStatistics(); // Reload statistics
-        loadPayments(); // Reload table
-
-        // Reload archived if it's visible
-        const archivedSection = document.getElementById('archived-section');
-        if (archivedSection.style.display !== 'none') {
-            loadArchivedPayments();
+        if (payment.archived) {
+            return res.json({ success: true, message: 'Payment already archived' });
         }
+
+        payment.archived = true;
+        payment.archivedAt = new Date();
+        payment.archivedBy = req.user.username;
+        await payment.save();
+
+        res.json({ success: true, message: 'Payment archived successfully' });
     } catch (error) {
         console.error('Archive payment error:', error);
-        showError(error.message || 'Failed to archive payment', 'dashboard-error');
+        res.status(500).json({ success: false, message: 'Failed to archive payment' });
     }
-}
+});
 
-// Archive all payments
-async function archiveAllPayments() {
+// POST /payments/archive-all - Archive all current payments (admin only)
+router.post('/payments/archive-all', authenticateAdmin, async(req, res) => {
     try {
-        const response = await fetch('/api/payments/archive-all', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${authToken}`
+        const result = await Payment.update({
+            archived: true,
+            archivedAt: new Date(),
+            archivedBy: req.user.username
+        }, {
+            where: {
+                archived: false
             }
         });
 
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to archive payments');
-        }
-
-        showSuccess(`📦 ${data.archivedCount} payment(s) archived successfully! Table cleared and statistics reset.`);
-        loadStatistics(); // Reload statistics (should show 0s now)
-        loadPayments(); // Reload table (should be empty)
-
-        // Reload archived if it's visible
-        const archivedSection = document.getElementById('archived-section');
-        if (archivedSection.style.display !== 'none') {
-            loadArchivedPayments();
-        }
+        res.json({
+            success: true,
+            message: `${result[0]} payment(s) archived successfully`,
+            archivedCount: result[0]
+        });
     } catch (error) {
         console.error('Archive all payments error:', error);
-        showError(error.message || 'Failed to archive payments', 'dashboard-error');
+        res.status(500).json({ success: false, message: 'Failed to archive payments' });
     }
-}
+});
 
-// Toggle archived payments section
-function toggleArchivedSection() {
-    const section = document.getElementById('archived-section');
-    const btn = document.getElementById('toggle-archived-btn');
-
-    if (section.style.display === 'none') {
-        section.style.display = 'block';
-        btn.textContent = 'Hide Archived';
-        loadArchivedPayments();
-    } else {
-        section.style.display = 'none';
-        btn.textContent = 'Show Archived';
-    }
-}
-
-// Load archived payments
-async function loadArchivedPayments() {
+// DELETE /payments/:uniqueId - Delete a payment permanently (admin only)
+router.delete('/payments/:uniqueId', authenticateAdmin, async(req, res) => {
     try {
-        const tbody = document.getElementById('archived-tbody');
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="12" class="text-center">Loading archived payments...</td>
-            </tr>
-        `;
+        const payment = await Payment.findOne({ where: { uniqueId: req.params.uniqueId } });
 
-        const response = await fetch('/api/payments/archived', {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Failed to load archived payments');
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Payment not found' });
         }
 
-        renderArchivedPayments(data.payments);
+        // Delete the payment permanently
+        await payment.destroy();
 
+        res.json({ success: true, message: 'Payment deleted successfully' });
     } catch (error) {
-        console.error('Load archived payments error:', error);
-        document.getElementById('archived-tbody').innerHTML = `
-            <tr>
-                <td colspan="12" class="text-center error">Failed to load archived payments</td>
-            </tr>
-        `;
+        console.error('Delete payment error:', error);
+        res.status(500).json({ success: false, message: 'Failed to delete payment' });
     }
-}
+});
 
-// Render archived payments table
-function renderArchivedPayments(payments) {
-    const tbody = document.getElementById('archived-tbody');
-
-    if (!payments || payments.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="12" class="text-center">No archived payments</td>
-            </tr>
-        `;
-        return;
-    }
-
-    tbody.innerHTML = payments.map((payment, index) => {
-        const rowNumber = index + 1;
-
-        const statusClass = payment.paymentStatus === 'completed' ? 'status-completed' :
-            payment.paymentStatus === 'pending' ? 'status-pending' :
-            'status-failed';
-
-        const checkedInIcon = payment.checkedIn ? '✅' : '⏳';
-        const approvedIcon = payment.approved ? '✅' : '⏳';
-
-        const archivedDate = payment.archivedAt ? new Date(payment.archivedAt).toLocaleString() : 'N/A';
-        const archivedBy = payment.archivedBy || 'Unknown';
-
-        return `
-            <tr>
-                <td>${rowNumber}</td>
-                <td>${escapeHtml(payment.userName)}</td>
-                <td>${escapeHtml(payment.userEmail)}</td>
-                <td>${escapeHtml(payment.userPhone)}</td>
-                <td>${payment.amount} EGP</td>
-                <td>${formatPaymentMethod(payment.paymentMethod)}</td>
-                <td><span class="status ${statusClass}">${payment.paymentStatus}</span></td>
-                <td><code>${payment.uniqueId}</code></td>
-                <td>${approvedIcon}</td>
-                <td>${checkedInIcon}</td>
-                <td>${archivedDate}</td>
-                <td>${escapeHtml(archivedBy)}</td>
-            </tr>
-        `;
-    }).join('');
-}
-
-// Logout
-function logout() {
-    authToken = null;
-    localStorage.removeItem('adminToken');
-
-    // Clear refresh interval
-    if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = null;
-    }
-
-    showLogin();
-
-    // Clear form
-    document.getElementById('login-form').reset();
-}
-
-// Complete payment and send Telegram notification (for testing/manual completion)
-async function completeAndNotify(uniqueId) {
-    if (!confirm(`Complete payment ${uniqueId} and send Telegram notification?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/test-complete-payment`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ uniqueId })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showMessage('dashboard-success', `✅ Payment completed and Telegram notification sent!`);
-            loadDashboard();
-        } else {
-            showMessage('dashboard-error', data.message || 'Failed to complete payment');
-        }
-    } catch (error) {
-        console.error('Complete payment error:', error);
-        showMessage('dashboard-error', 'Error completing payment');
-    }
-}
+module.exports = router;
