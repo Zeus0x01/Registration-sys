@@ -22,6 +22,10 @@ const paymentsRouter = require('./routes/payments');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+
+// Serve static assets from public/
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
