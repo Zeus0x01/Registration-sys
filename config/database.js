@@ -11,6 +11,12 @@ if (!dbUrl) {
   console.error('Database URL is missing! Check Vercel Environment Variables.');
   throw new Error('POSTGRES_URL or DATABASE_URL environment variable is missing');
 }
+const sequelize = new Sequelize(process.env.payment_POSTGRES_URL, {
+  dialect: 'postgres',
+  dialectOptions: {
+    ssl: { require: true, rejectUnauthorized: false }
+  }
+});
 
 const sequelize = new Sequelize(dbUrl, {
   dialect: 'postgres',
@@ -34,3 +40,9 @@ const sequelize = new Sequelize(dbUrl, {
 });
 
 module.exports = sequelize;
+
+// Debug logs
+console.log('DEBUG ENV CHECK');
+console.log('process.env.POSTGRES_URL:', process.env.POSTGRES_URL ? 'DEFINED' : 'UNDEFINED');
+console.log('process.env.DATABASE_URL:', process.env.DATABASE_URL ? 'DEFINED' : 'UNDEFINED');
+console.log('process.env.payment_POSTGRES_URL:', process.env.payment_POSTGRES_URL ? 'DEFINED' : 'UNDEFINED');
