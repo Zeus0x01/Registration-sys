@@ -6,7 +6,7 @@ const path = require('path');
 const pg = require('pg');
 
 // Use DATABASE_URL for Vercel/Supabase deployments
-const dbUrl = process.env.env.DATABASE_URL;
+const dbUrl = process.env.DATABASE_URL;
 
 if (!dbUrl) {
     console.error('❌ DATABASE_URL is missing! Set it in your Vercel Environment Variables.');
