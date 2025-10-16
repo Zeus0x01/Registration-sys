@@ -12,7 +12,7 @@
       "dest": "app.js"
     }
   ],
-  "buildCommand": "npm run vercel-build",
+  "buildCommand": "npm install pg pg-hstore",
   "env": {
     "NODE_ENV": "production"
   }
