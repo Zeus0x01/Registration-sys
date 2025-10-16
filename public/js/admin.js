@@ -244,9 +244,9 @@ router.post('/payments', async(req, res) => {
         const amountCents = Math.round(parseFloat(priceToUse) * 100);
 
         // Get base URL for callbacks
-        const baseUrl = process.env.WEBHOOK_URL ?
+        const baseUrl = window.BASE_URL || (process.env.WEBHOOK_URL ?
             process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
-            `http://localhost:${process.env.PORT || 5000}`;
+            `http://localhost:${location.port || 5000}`);
 
         // Split name into first and last
         const nameParts = userName.split(' ');
@@ -603,9 +603,9 @@ router.post('/wallet-pay-direct', async(req, res) => {
         const amountCents = Math.round(payment.amount * 100);
 
         // Get base URL for callbacks
-        const baseUrl = process.env.WEBHOOK_URL ?
+        const baseUrl = window.BASE_URL || (process.env.WEBHOOK_URL ?
             process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
-            `http://localhost:${process.env.PORT || 5000}`;
+            `http://localhost:${location.port || 5000}`);
 
         // Split name into first and last
         const nameParts = payment.userName.split(' ');
@@ -750,9 +750,9 @@ router.post('/wallet-pay', async(req, res) => {
         const amountCents = Math.round(payment.amount * 100);
 
         // Get base URL for callbacks
-        const baseUrl = process.env.WEBHOOK_URL ?
+        const baseUrl = window.BASE_URL || (process.env.WEBHOOK_URL ?
             process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
-            `http://localhost:${process.env.PORT || 5000}`;
+            `http://localhost:${location.port || 5000}`);
 
         // Split name into first and last
         const nameParts = payment.userName.split(' ');
