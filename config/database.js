@@ -1,30 +1,36 @@
-require('dotenv').config();
+// config/database.js
+require('dotenv').config(); // Only for local dev; ignored on Vercel
 const { Sequelize } = require('sequelize');
 
-const dbUrl = process.env.POSTGRES_URL;
+// Debug logging to check env var in Vercel logs
+console.log('POSTGRES_URL value:', process.env.POSTGRES_URL ? 'Defined' : 'UNDEFINED');
+console.log('DATABASE_URL value:', process.env.DATABASE_URL ? 'Defined' : 'UNDEFINED');
+
+const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 if (!dbUrl) {
-    throw new Error('POSTGRES_URL environment variable is missing');
+  console.error('Database URL is missing! Check Vercel Environment Variables.');
+  throw new Error('POSTGRES_URL or DATABASE_URL environment variable is missing');
 }
 
 const sequelize = new Sequelize(dbUrl, {
-    dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: {
-        max: 5,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
-    },
-    define: {
-        timestamps: true,
-        underscored: false
-    },
-    dialectOptions: {
-        ssl: {
-            require: true,
-            rejectUnauthorized: false // Required for Supabase SSL
-        }
+  dialect: 'postgres',
+  logging: process.env.NODE_ENV === 'development' ? console.log : false,
+  pool: {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
+  },
+  define: {
+    timestamps: true,
+    underscored: false
+  },
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false // For Supabase SSL
     }
+  }
 });
 
 module.exports = sequelize;
