@@ -1,3 +1,10 @@
+/* Utility: Hidden class for toggling visibility */
+
+.hidden {
+    display: none;
+}
+
+
 /* Global Styles */
 
 * {
@@ -205,17 +212,45 @@ h2 {
 }
 
 .btn-success {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-    color: white;
-    padding: 10px 20px;
-    font-weight: 500;
-    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    color: #fff;
+    padding: 10px 24px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(67, 233, 123, 0.18);
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s, box-shadow 0.3s, transform 0.2s;
+}
+
+.btn-success::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(67, 233, 123, 0.15) 0%, rgba(56, 249, 215, 0.15) 100%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 1;
 }
 
 .btn-success:hover {
-    background: linear-gradient(135deg, #218838 0%, #1aa179 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+    background: linear-gradient(135deg, #38f9d7 0%, #43e97b 100%);
+    box-shadow: 0 6px 24px rgba(67, 233, 123, 0.25);
+    transform: translateY(-2px) scale(1.04);
+}
+
+.btn-success:active {
+    transform: scale(0.98);
+}
+
+.btn-success:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(67, 233, 123, 0.25);
 }
 
 
@@ -244,10 +279,6 @@ h2 {
     background: #eef;
     color: #33c;
     border: 1px solid #ccf;
-}
-
-.hidden {
-    display: none !important;
 }
 
 
@@ -366,30 +397,69 @@ h2 {
 }
 
 
-/* Dashboard */
+/* Dashboard Styles (Modified for Payment Peek Pro Inspiration) */
 
 .dashboard-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 30px;
+    margin-bottom: 40px;
+    padding: 20px 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.2);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     flex-wrap: wrap;
     gap: 15px;
 }
 
+.dashboard-header:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 25px rgba(102, 126, 234, 0.3);
+}
+
 .dashboard-header h1 {
     margin: 0;
+    color: white;
+    font-size: 1.8rem;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .dashboard-header .btn {
     width: auto;
-    padding: 10px 20px;
+    padding: 12px 24px;
+    font-size: 14px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid white;
+    color: white;
+    transition: all 0.3s ease;
+}
+
+.dashboard-header .btn:hover {
+    background: white;
+    color: #667eea;
+    transform: translateY(-2px);
+}
+
+.dashboard-header .log-chek-btn {
+    display: flex;
 }
 
 .section {
-    margin-bottom: 40px;
-    padding-bottom: 40px;
-    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 50px;
+    padding: 25px;
+    background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+    border-radius: 12px;
+    border: 1px solid #e0e8ff;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.section:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
 }
 
 .section:last-child {
@@ -397,224 +467,236 @@ h2 {
 }
 
 
-/* Statistics Cards */
+/* Payment Peek Pro Inspired Table Row Styles */
 
-.stat-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 20px;
-    border-radius: 10px;
-    text-align: center;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
-}
-
-.stat-label {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    opacity: 0.9;
-}
-
-.stat-value {
-    font-size: 28px;
-    font-weight: bold;
-}
-
-
-/* ==================== TABLE DESIGN - CLEAN & MODERN ==================== */
-
-
-/* Table Container */
-
-.table-responsive {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    background: white;
+.dashboard-row-card {
+    background: #fff;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    margin: 20px 0;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.07);
+    transition: box-shadow 0.2s, background 0.2s;
 }
 
-
-/* Table Base */
-
-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    font-size: 14px;
-    min-width: 1200px;
-    table-layout: fixed;
+.dashboard-row-card:hover {
+    background: #f8f9ff;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.12);
 }
 
-
-/* Table Header */
-
-table thead {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    position: sticky;
-    top: 0;
-    z-index: 10;
+.amount-bold {
+    font-weight: bold;
+    font-size: 17px;
+    color: #764ba2;
 }
 
-table thead th {
-    padding: 16px 12px;
-    text-align: left;
-    font-weight: 600;
+.currency {
     font-size: 13px;
-    color: white;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
-    position: relative;
-    white-space: nowrap;
-    cursor: default;
-    box-sizing: border-box;
-    max-width: 100%;
+    color: #888;
+    margin-left: 2px;
+}
+
+.customer-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 15px;
+}
+
+.customer-email,
+.customer-phone {
+    font-size: 13px;
+    color: #888;
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-right: 4px;
+    margin-bottom: 2px;
+    border: 1px solid #e0e0e0;
+}
+
+.status-success {
+    background: #e6fffa;
+    color: #38a169;
+    border-color: #38a169;
+}
+
+.status-warning {
+    background: #fffbea;
+    color: #d69e2e;
+    border-color: #d69e2e;
+}
+
+.status-danger {
+    background: #ffeaea;
+    color: #e53e3e;
+    border-color: #e53e3e;
+}
+
+.btn-view {
+    background: #764ba2;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.07);
+    transition: background 0.2s, box-shadow 0.2s;
+}
+
+.btn-view:hover {
+    background: #667eea;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.12);
+}
+
+.icon-card::before {
+    content: '💳';
+    font-size: 18px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.icon-wallet::before {
+    content: '📱';
+    font-size: 18px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.icon-cash::before {
+    content: '💵';
+    font-size: 18px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.date-main {
+    font-size: 14px;
+    color: #333;
+    font-weight: 500;
+}
+
+.date-sub {
+    font-size: 12px;
+    color: #888;
+    margin-left: 4px;
+}
+
+
+/* Soft Card and Table Styles for Dashboard */
+
+.soft-card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 2px 16px rgba(102, 126, 234, 0.07);
+    padding: 32px 24px;
+    margin-bottom: 32px;
+}
+
+.soft-table {
+    border-radius: 14px;
     overflow: hidden;
+    box-shadow: none;
+    background: #fff;
 }
 
-table thead th:last-child {
-    border-right: none;
+.soft-table thead tr {
+    background: #f8fafc;
+    color: #333;
+    border-bottom: 2px solid #ececec;
 }
 
-
-/* Default Column Widths - Optimized for 13 columns */
-
-
-/* Only set widths on headers - table-layout:fixed will apply to body cells automatically */
-
-table thead th:nth-child(1) {
-    width: 50px;
-    min-width: 50px;
+.soft-table th {
+    font-weight: 700;
+    font-size: 15px;
+    padding: 16px 10px;
+    border-bottom: 2px solid #ececec;
+    background: #f8fafc;
 }
 
-table thead th:nth-child(2) {
-    width: 50px;
-    min-width: 50px;
+.soft-table td {
+    padding: 14px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fff;
+    vertical-align: middle;
 }
 
-table thead th:nth-child(3) {
-    width: 150px;
-    min-width: 100px;
+.table-checkbox {
+    width: 40px;
 }
 
-table thead th:nth-child(4) {
-    width: 200px;
-    min-width: 120px;
-}
-
-table thead th:nth-child(5) {
-    width: 120px;
-    min-width: 100px;
-}
-
-table thead th:nth-child(6) {
-    width: 100px;
-    min-width: 80px;
-}
-
-table thead th:nth-child(7) {
-    width: 120px;
-    min-width: 90px;
-}
-
-table thead th:nth-child(8) {
-    width: 110px;
-    min-width: 90px;
-}
-
-table thead th:nth-child(9) {
-    width: 100px;
-    min-width: 80px;
-}
-
-table thead th:nth-child(10) {
+.table-id {
     width: 90px;
-    min-width: 70px;
+    font-family: 'Fira Mono', 'Consolas', monospace;
+    font-size: 13px;
 }
 
-table thead th:nth-child(11) {
-    width: 100px;
-    min-width: 80px;
+.table-customer {
+    min-width: 140px;
+    font-weight: 600;
 }
 
-table thead th:nth-child(12) {
-    width: 150px;
-    min-width: 120px;
+.table-contact {
+    min-width: 180px;
+    font-size: 14px;
+    color: #666;
 }
 
-table thead th:nth-child(13) {
+.table-amount {
+    width: 90px;
+    font-weight: bold;
+    font-size: 16px;
+    color: #6c63ff;
+}
+
+.table-method {
     width: 120px;
-    min-width: 100px;
 }
 
+.table-status {
+    width: 120px;
+}
 
-/* Column alignment - Apply to body cells */
+.table-date {
+    width: 150px;
+}
 
-table tbody td:nth-child(1),
-table tbody td:nth-child(2),
-table tbody td:nth-child(5),
-table tbody td:nth-child(6),
-table tbody td:nth-child(7),
-table tbody td:nth-child(8),
-table tbody td:nth-child(9),
-table tbody td:nth-child(10),
-table tbody td:nth-child(11),
-table tbody td:nth-child(12),
-table tbody td:nth-child(13) {
+.table-actions {
+    width: 100px;
     text-align: center;
 }
 
 
-/* Special handling for action column */
+/* Additional Table Styles */
 
-table tbody td:nth-child(13) {
-    white-space: normal;
-    overflow: visible;
-    max-width: none;
-    /* Remove strict width constraint for actions column */
+.dashboard-table-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.07);
+    overflow-x: auto;
 }
 
-
-/* Table Body */
-
-table tbody tr {
-    border-bottom: 1px solid #e5e7eb;
-    transition: background-color 0.2s ease;
+.dashboard-table-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
-table tbody tr:hover {
-    background-color: #f9fafb;
+.table-search {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
 }
 
-table tbody tr:nth-child(even) {
-    background-color: #fafafa;
-}
-
-table tbody tr:nth-child(even):hover {
-    background-color: #f3f4f6;
-}
-
-table tbody td {
-    padding: 14px 12px;
-    color: #374151;
-    vertical-align: middle;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    box-sizing: border-box;
-    max-width: 0;
-    /* Forces table-layout:fixed to respect widths strictly */
-    word-wrap: break-word;
-    position: relative;
+.table-filter {
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
 }
 
 

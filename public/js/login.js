@@ -55,8 +55,10 @@ function showDashboard() {
     document.getElementById('login-section').classList.add('hidden');
     document.getElementById('dashboard-section').classList.remove('hidden');
 
-    // Load dashboard data
-    fetchDashboardData();
+    // Load dashboard data using enhanced dashboard loader
+    if (typeof loadDashboardData === 'function') {
+        loadDashboardData();
+    }
 }
 
 // Fetch dashboard data

@@ -105,14 +105,17 @@ async function verifyPayment(uniqueId, payload = null) {
         const data = await response.json();
 
         if (!response.ok) {
+            console.error('Backend error:', data.message || 'Verification failed');
             throw new Error(data.message || 'Verification failed');
         }
 
+        console.log('Backend valid value:', data.valid);
         if (data.valid && data.payment) {
             currentPaymentUniqueId = uniqueId;
-            showResult(true, data.payment);
+            showResult(data.valid, data.payment);
         } else {
-            showResult(false);
+            console.error('Payment not valid:', data);
+            showResult(data.valid, data.payment, data.message || 'Payment not valid.');
         }
 
     } catch (error) {
@@ -145,15 +148,8 @@ function showResult(isValid, payment = null, errorMessage = null) {
             <p><strong>Method:</strong> ${formatPaymentMethod(payment.paymentMethod)}</p>
         `;
 
-        // Show check-in button only if approved and not checked in
-        if (payment.approved && !payment.checkedIn) {
-            checkinBtn.classList.remove('hidden');
-        } else if (!payment.approved) {
-            checkinBtn.classList.add('hidden');
-            showMessage('⏳ Payment not approved yet. Please approve in dashboard first.', 'error');
-        } else {
-            checkinBtn.classList.add('hidden');
-        }
+        // Always hide check-in button
+        checkinBtn.classList.add('hidden');
 
     } else {
         resultCard.className = 'result-card invalid';

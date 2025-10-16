@@ -1,3 +1,33 @@
+// ==================== UTILITY: FORMAT PAYMENT METHOD ====================
+function formatPaymentMethod(method) {
+    switch (method) {
+        case 'paymob-wallet':
+            return 'Wallet';
+        case 'card':
+        case 'debit':
+        case 'credit':
+            return 'Card/Debit';
+        case 'cash':
+            return 'Cash';
+        default:
+            return method ? method.charAt(0).toUpperCase() + method.slice(1) : '-';
+    }
+}
+// ==================== UTILITY: ESCAPE HTML ====================
+function escapeHtml(str) {
+    if (typeof str !== 'string') return '';
+    return str.replace(/[&<>'"`=]/g, function(c) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;',
+            '`': '&#96;',
+            '=': '&#61;'
+        }[c];
+    });
+}
 // ==================== ENHANCED ADMIN DASHBOARD FEATURES ====================
 
 // Global variables for enhanced features
@@ -99,6 +129,59 @@ function applyFilters() {
     renderPayments(filteredPaymentsData);
     updatePagination();
     showSuccess(`Applied filters: ${filteredPaymentsData.length} payments found`);
+}
+
+// Make only small table filters update table in real time
+document.addEventListener('DOMContentLoaded', () => {
+    const tableFilterIds = [
+        'table-search-input', 'status-filter', 'method-filter', 'approved-filter'
+    ];
+    tableFilterIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateTableFilters);
+            el.addEventListener('change', updateTableFilters);
+        }
+    });
+});
+
+function updateTableFilters() {
+    const searchTerm = document.getElementById('table-search-input').value.toLowerCase().trim();
+    const status = document.getElementById('status-filter').value;
+    const method = document.getElementById('method-filter').value;
+    const approved = document.getElementById('approved-filter').value;
+
+    filteredPaymentsData = allPaymentsData.filter(payment => {
+        // Search
+        if (searchTerm && !(
+                payment.userName.toLowerCase().includes(searchTerm) ||
+                payment.userEmail.toLowerCase().includes(searchTerm) ||
+                payment.userPhone.includes(searchTerm) ||
+                payment.uniqueId.toLowerCase().includes(searchTerm) ||
+                payment.amount.toString().includes(searchTerm)
+            )) return false;
+
+        // Status
+        if (status !== 'all' && payment.paymentStatus !== status) return false;
+
+        // Method
+        if (method !== 'all') {
+            if (method === 'card' && payment.paymentMethod !== 'paymob-card') return false;
+            if (method === 'wallet' && payment.paymentMethod !== 'paymob-wallet') return false;
+            if (method === 'cash' && payment.paymentMethod !== 'cash') return false;
+        }
+
+        // Approved
+        if (approved !== 'all') {
+            if (approved === 'approved' && !payment.approved) return false;
+            if (approved === 'pending' && payment.approved) return false;
+        }
+
+        return true;
+    });
+    currentPage = 1;
+    renderPayments(filteredPaymentsData);
+    updatePagination();
 }
 
 function clearFilters() {
@@ -273,6 +356,54 @@ function searchPayments() {
 }
 
 // ==================== ENHANCED EXPORT ====================
+// Alias for export button compatibility
+window.exportToCSV = function() {
+    // Use the same logic as exportToExcel but output CSV
+    const filteredData = window.filteredPaymentsData || [];
+    const allData = window.allPaymentsData || [];
+    const dataToExport = filteredData.length > 0 ? filteredData : allData;
+
+    if (dataToExport.length === 0) {
+        showWarning('No payments to export. Please load payments first.');
+        return;
+    }
+
+    const headers = [
+        'Name', 'Email', 'Phone', 'Amount (EGP)', 'Payment Method',
+        'Status', 'Unique ID', 'Approved', 'Checked In', 'Date', 'Approved By', 'Checked In By'
+    ];
+
+    const rows = dataToExport.map(payment => [
+        payment.userName,
+        payment.userEmail,
+        payment.userPhone,
+        payment.amount,
+        payment.paymentMethod === 'paymob-wallet' ? 'Mobile Wallet' : 'Card/Debit',
+        payment.paymentStatus,
+        payment.uniqueId,
+        payment.approved ? 'Yes' : 'No',
+        payment.checkedIn ? 'Yes' : 'No',
+        new Date(payment.createdAt).toLocaleString(),
+        payment.approvedBy || '',
+        payment.checkedInBy || ''
+    ]);
+
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `payments_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showSuccess(`Successfully exported ${dataToExport.length} payments to CSV format`);
+};
 
 let isExportingExcel = false; // Prevent double-click
 
@@ -357,7 +488,7 @@ function renderPayments(payments) {
     if (!payments || payments.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="13" class="text-center">No payments found</td>
+                <td colspan="9" class="text-center">No payments found</td>
             </tr>
         `;
         return;
@@ -376,104 +507,66 @@ function renderPayments(payments) {
     // Render rows with column visibility
     tbody.innerHTML = paginatedPayments.map((payment, index) => {
         const rowNumber = startIndex + index + 1;
+        // Payment method icon
+        let methodIcon = '';
+        if (payment.paymentMethod === 'paymob-card') methodIcon = '<span class="icon-card" title="Card">&#128179;</span>';
+        else if (payment.paymentMethod === 'paymob-wallet') methodIcon = '<span class="icon-wallet" title="Wallet">&#128241;</span>';
+        else methodIcon = '<span class="icon-cash" title="Cash">&#128176;</span>';
 
-        const statusClass = payment.paymentStatus === 'completed' ? 'status-completed' :
-            payment.paymentStatus === 'pending' ? 'status-pending' :
-            'status-failed';
-
-        const checkedInIcon = payment.checkedIn ? '✅' : '⏳';
-        const approvedIcon = payment.approved ? '✅' : '⏳';
-
-        const date = new Date(payment.createdAt).toLocaleString();
-
-        const approveButton = payment.approved ?
-            `<span class="status status-completed">✅ Approved</span>` :
-            `<button class="btn btn-small btn-success" onclick="approvePayment(${payment.id})">✅ Approve</button>`;
-
-        let rowHtml = '<tr>';
-
-        // Checkbox column
-        if (visibleColumns.checkbox) {
-            rowHtml += `<td><input type="checkbox" value="${payment.uniqueId}" onchange="toggleSelection('${payment.uniqueId}')"></td>`;
+        // Status pill
+        let statusClass = '';
+        let statusLabel = payment.paymentStatus;
+        if (payment.paymentStatus === 'completed') {
+            statusClass = 'status-pill status-success';
+            statusLabel = 'Completed';
+        } else if (payment.paymentStatus === 'paid') {
+            statusClass = 'status-pill status-info';
+            statusLabel = 'Paid';
+        } else if (payment.paymentStatus === 'pending') {
+            statusClass = 'status-pill status-warning';
+            statusLabel = 'Pending';
+        } else {
+            statusClass = 'status-pill status-danger';
         }
 
-        // Number column
-        if (visibleColumns.number) {
-            rowHtml += `<td>${rowNumber}</td>`;
-        }
+        // Selection circle
+        const selectCircle = `<span class="select-circle${payment.selected ? ' selected' : ''}" onclick="toggleSelection('${payment.uniqueId}')"></span>`;
 
-        // Name column
-        if (visibleColumns.name) {
-            rowHtml += `<td>${escapeHtml(payment.userName)}</td>`;
-        }
+        // Customer info
+        const customerName = payment.userName ? `<span class="customer-name">${escapeHtml(payment.userName)}</span>` : '-';
+        const customerEmail = payment.userEmail ? `<span class="customer-email">${escapeHtml(payment.userEmail)}</span>` : '-';
+        const customerPhone = payment.userPhone ? `<span class="customer-phone">${escapeHtml(payment.userPhone)}</span>` : '-';
 
-        // Email column
-        if (visibleColumns.email) {
-            rowHtml += `<td>${escapeHtml(payment.userEmail)}</td>`;
-        }
+        // Amount
+        const amount = payment.amount ? `<span class="amount-bold">${payment.amount}</span> <span class="currency">EGP</span>` : '-';
 
-        // Phone column
-        if (visibleColumns.phone) {
-            rowHtml += `<td>${escapeHtml(payment.userPhone)}</td>`;
-        }
+        // Date
+        const date = payment.createdAt ? `<span class="date-main">${new Date(payment.createdAt).toLocaleDateString()}</span> <span class="date-sub">${new Date(payment.createdAt).toLocaleTimeString()}</span>` : '-';
 
-        // Amount column
-        if (visibleColumns.amount) {
-            rowHtml += `<td>${payment.amount} EGP</td>`;
-        }
+        // Status pill
+        const statusPill = `<span class="${statusClass}">${statusLabel}</span>`;
 
-        // Method column
-        if (visibleColumns.method) {
-            rowHtml += `<td>${formatPaymentMethod(payment.paymentMethod)}</td>`;
-        }
+        // Actions: Approve button (enabled for 'paid', disabled for 'completed')
+        const approveButton = (payment.paymentStatus === 'paid' && !payment.approved) ?
+            `<button class="btn-success btn-small" onclick="approvePayment('${payment.id}')">Approve</button>` :
+            `<button class="btn-success btn-small" disabled style="opacity:0.6;cursor:not-allowed;">${payment.approved || payment.paymentStatus === 'completed' ? 'Approved' : 'Approve'}</button>`;
 
-        // Status column
-        if (visibleColumns.status) {
-            rowHtml += `<td><span class="status ${statusClass}">${payment.paymentStatus}</span></td>`;
-        }
-
-        // Unique ID column
-        if (visibleColumns.uniqueid) {
-            rowHtml += `<td><code>${payment.uniqueId}</code></td>`;
-        }
-
-        // Approved column
-        if (visibleColumns.approved) {
-            rowHtml += `<td>${approvedIcon}</td>`;
-        }
-
-        // Checked In column
-        if (visibleColumns.checkedin) {
-            rowHtml += `<td>${checkedInIcon}</td>`;
-        }
-
-        // Date column
-        if (visibleColumns.date) {
-            rowHtml += `<td>${date}</td>`;
-        }
-
-        // Actions column
-        if (visibleColumns.actions) {
-            rowHtml += `
-                <td>
-                    <div class="action-buttons">
-                        ${approveButton}
-                        <button class="btn btn-small btn-warning" onclick="archivePayment('${payment.uniqueId}')" title="Archive this payment">📦 Archive</button>
-                        <button class="btn btn-small btn-danger" onclick="deletePayment('${payment.uniqueId}')" title="Delete this payment permanently">🗑️ Delete</button>
-                    </div>
-                </td>
-            `;
-        }
-
-        rowHtml += '</tr>';
-        return rowHtml;
+        return `
+            <tr class="dashboard-row-card">
+                
+                <td class="id-cell">${payment.uniqueId || rowNumber}</td>
+                <td class="customer-cell">${customerName}</td>
+                <td class="contact-cell">${customerEmail}<br>${customerPhone}</td>
+                <td class="amount-cell">${amount}</td>
+                <td class="method-cell">${methodIcon} ${formatPaymentMethod(payment.paymentMethod)}</td>
+                <td class="status-cell">${statusPill}</td>
+                <td class="date-cell">${date}</td>
+                <td class="actions-cell">${approveButton}</td>
+            </tr>
+        `;
     }).join('');
 
-    // Update table headers based on visible columns
-    updateTableHeaders();
-
-    // Make headers sortable
-    makeHeadersSortable();
+    // Keep static headers defined in admin.html for consistent styling
 }
 
 function updateTableHeaders() {
@@ -601,36 +694,120 @@ async function bulkApprove() {
 }
 
 // ==================== INITIALIZATION ====================
+// Alias for refresh button compatibility
+window.loadPayments = function() {
+    loadDashboardData();
+};
 
 // Initialize enhanced features when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Load column preferences
-    loadColumnPreferences();
+    // Check authentication status
+    const token = localStorage.getItem('adminToken');
+    const loginSection = document.getElementById('login-section');
+    const dashboardSection = document.getElementById('dashboard-section');
 
-    // Load saved filters
-    loadSavedFilters();
+    if (token) {
+        // Hide login, show dashboard
+        if (loginSection) loginSection.classList.add('hidden');
+        if (dashboardSection) dashboardSection.classList.remove('hidden');
 
-    // Set up event listeners for enhanced features
-    setupEnhancedEventListeners();
-    
-    // Toggle archived section visibility
-    document.getElementById('toggle-archived-btn')?.addEventListener('click', toggleArchivedSection);
-    
-    // Load dashboard data
-    loadDashboardData();
+        // Load column preferences
+        loadColumnPreferences();
+        // Load saved filters
+        loadSavedFilters();
+        // Set up event listeners for enhanced features
+        setupEnhancedEventListeners();
+        // Toggle archived section visibility
+        const toggleBtn = document.getElementById('toggle-archived-btn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', toggleArchivedSection);
+        }
+        // Load payment settings and update form
+        fetch('/api/settings/public')
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.success) {
+                    const priceInput = document.getElementById('price');
+                    if (priceInput) priceInput.value = data.price || '';
+                    const isActiveSelect = document.getElementById('isActive');
+                    if (isActiveSelect) isActiveSelect.value = data.isActive ? 'true' : 'false';
+                    let opts = [];
+                    if (data.priceOptions) {
+                        try {
+                            opts = JSON.parse(data.priceOptions);
+                        } catch {
+                            opts = [];
+                        }
+                    }
+                    renderPriceOptions(opts);
+                }
+            })
+            .catch(() => {});
+        // Load dashboard data
+        loadDashboardData();
+    } else {
+        // Show login, hide dashboard
+        if (loginSection) loginSection.classList.remove('hidden');
+        if (dashboardSection) dashboardSection.classList.add('hidden');
+    }
 });
+
+// Render price options in settings form
+function renderPriceOptions(options) {
+    const container = document.getElementById('price-options-container');
+    if (!container) return;
+    container.innerHTML = '';
+    let optsArr = options;
+    if (typeof options === 'string') {
+        try {
+            optsArr = JSON.parse(options);
+        } catch {
+            optsArr = [];
+        }
+    }
+    if (!Array.isArray(optsArr)) optsArr = [];
+    optsArr.forEach((opt, idx) => {
+        const div = document.createElement('div');
+        div.className = 'price-option-row';
+        div.innerHTML = `
+            <input type="text" class="price-option-label" value="${opt.label || ''}" placeholder="Label" style="width:120px; margin-right:8px;">
+            <input type="number" class="price-option-input" value="${opt.amount || ''}" step="0.01" min="0" style="width:100px; margin-right:8px;">
+            <button type="button" class="btn btn-danger btn-small" onclick="removePriceOption(${idx})">Remove</button>
+        `;
+        container.appendChild(div);
+    });
+}
+
+// Add price option logic
+window.addPriceOption = function() {
+    const container = document.getElementById('price-options-container');
+    const div = document.createElement('div');
+    div.className = 'price-option-row';
+    div.innerHTML = `
+        <input type="text" class="price-option-label" placeholder="Label" style="width:120px; margin-right:8px;">
+        <input type="number" class="price-option-input" placeholder="Amount" step="0.01" min="0" style="width:100px; margin-right:8px;">
+        <button type="button" class="btn btn-danger btn-small" onclick="removePriceOption(Array.from(container.children).indexOf(this.parentNode))">Remove</button>
+    `;
+    container.appendChild(div);
+};
+
+// Remove price option logic
+window.removePriceOption = function(idx) {
+    const container = document.getElementById('price-options-container');
+    const rows = container.getElementsByClassName('price-option-row');
+    if (rows[idx]) container.removeChild(rows[idx]);
+};
 
 // Toggle archived section visibility
 function toggleArchivedSection() {
     const archivedSection = document.getElementById('archived-section');
     const toggleButton = document.getElementById('toggle-archived-btn');
-    
-    if (archivedSection.style.display === 'none' || !archivedSection.style.display) {
-        archivedSection.style.display = 'block';
-        toggleButton.textContent = 'Hide Archived';
-    } else {
-        archivedSection.style.display = 'none';
-        toggleButton.textContent = 'Show Archived';
+    if (!archivedSection || !toggleButton) return;
+    const isHidden = archivedSection.classList.contains('hidden');
+    archivedSection.classList.toggle('hidden');
+    toggleButton.textContent = isHidden ? 'Hide Archived' : 'Show Archived';
+    if (isHidden && typeof loadArchivedPayments === 'function') {
+        loadArchivedPayments();
     }
 }
 
@@ -638,7 +815,7 @@ function toggleArchivedSection() {
 function toggleSelectAllArchived() {
     const selectAllCheckbox = document.getElementById('select-all-archived');
     const checkboxes = document.querySelectorAll('#archived-table tbody input[type="checkbox"]');
-    
+
     checkboxes.forEach(checkbox => {
         checkbox.checked = selectAllCheckbox.checked;
     });
@@ -648,90 +825,104 @@ function toggleSelectAllArchived() {
 async function loadDashboardData() {
     try {
         const token = localStorage.getItem('adminToken');
-        
+
         if (!token) {
             console.log('No token found - user needs to log in first');
             // Don't show error, just return as user likely needs to log in
             return;
         }
-        
-        // Show loading state
-        document.getElementById('payments-table').querySelector('tbody').innerHTML = '<tr><td colspan="13" class="text-center">Loading...</td></tr>';
-        
+
+        // Show loading state in the dedicated tbody
+        const tbody = document.getElementById('payments-tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center table-loading">Loading...</td></tr>';
+        }
+
         // Fetch payments data
-        const response = await fetch('/api/admin/payments', {
+        const response = await fetch('/api/payments', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
-        
+
         if (!response.ok) {
             throw new Error('Failed to fetch dashboard data');
         }
-        
+
         const data = await response.json();
-        
+
         // Store all payments data globally
         allPaymentsData = data.payments || [];
         filteredPaymentsData = [...allPaymentsData];
-        
-        // Display payments in the table
-        displayPayments(data.payments || []);
-        
+
+        // Render payments using Payment Peek Pro-styled renderer
+        renderPayments(data.payments || []);
+
         // Update stats
         updateDashboardStats(data.stats || {});
-        
+
         // Update pagination
         updatePagination();
-        
+
         console.log('Dashboard data loaded successfully');
     } catch (error) {
         console.error('Error loading dashboard data:', error);
-        document.getElementById('payments-table').querySelector('tbody').innerHTML = 
-            '<tr><td colspan="13" class="text-center text-danger">Error loading data. Please try again.</td></tr>';
+        const tbody = document.getElementById('payments-tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Error loading data. Please try again.</td></tr>';
+        }
     }
 }
 
 // Display payments in the table
 function displayPayments(payments) {
     const tableBody = document.getElementById('payments-table').querySelector('tbody');
-    
+
     if (payments.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="13" class="text-center">No payments found</td></tr>';
         return;
     }
-    
+
     let html = '';
-    
+
     payments.forEach((payment, index) => {
         html += `
             <tr data-id="${payment.id}">
                 <td><input type="checkbox" class="payment-checkbox" data-id="${payment.id}"></td>
                 <td>${index + 1}</td>
-                <td>${payment.fullName || '-'}</td>
-                <td>${payment.email || '-'}</td>
-                <td>${payment.phone || '-'}</td>
-                <td>${payment.amount ? '$' + payment.amount : '-'}</td>
-                <td>${payment.paymentMethod || '-'}</td>
-                <td>${payment.status || '-'}</td>
-                <td>${payment.createdAt ? new Date(payment.createdAt).toLocaleString() : '-'}</td>
+                <td>${payment.userName || '-'}</td>
                 <td>
-                    <button class="btn btn-primary btn-small" onclick="viewPaymentDetails(${payment.id})">View</button>
+                    ${payment.userEmail || '-'}<br>
+                    <span style="color:#555;font-size:13px;">${payment.userPhone || '-'}</span>
+                </td>
+                <td>${payment.amount ? payment.amount + ' EGP' : '-'}</td>
+                <td>${payment.paymentMethod || '-'}</td>
+                <td>${payment.paymentStatus || '-'}</td>
+                <td>${payment.createdAt ? new Date(payment.createdAt).toLocaleString() : '-'}</td>
+                <td class="table-actions-cell">
                     <button class="btn btn-danger btn-small" onclick="archivePayment(${payment.id})">Archive</button>
+                    <button class="btn btn-success btn-small" onclick="approvePayment(${payment.id})">Approve</button>
+                    <button class="btn btn-secondary btn-small" onclick="deletePayment(${payment.id})">Delete</button>
                 </td>
             </tr>
         `;
     });
-    
+
     tableBody.innerHTML = html;
 }
 
 // Update dashboard stats
 function updateDashboardStats(stats) {
-    document.getElementById('total-payments').textContent = stats.totalPayments || 0;
-    document.getElementById('total-amount').textContent = stats.totalAmount ? '$' + stats.totalAmount : '$0';
-    document.getElementById('pending-payments').textContent = stats.pendingPayments || 0;
-    document.getElementById('completed-payments').textContent = stats.completedPayments || 0;
+    // Check if elements exist before updating them
+    const totalPaymentsEl = document.getElementById('total-payments');
+    const totalAmountEl = document.getElementById('total-amount');
+    const pendingPaymentsEl = document.getElementById('pending-payments');
+    const completedPaymentsEl = document.getElementById('completed-payments');
+
+    if (totalPaymentsEl) totalPaymentsEl.textContent = stats.totalPayments || 0;
+    if (totalAmountEl) totalAmountEl.textContent = stats.totalAmount ? '$' + stats.totalAmount : '$0';
+    if (pendingPaymentsEl) pendingPaymentsEl.textContent = stats.pendingPayments || 0;
+    if (completedPaymentsEl) completedPaymentsEl.textContent = stats.completedPayments || 0;
 }
 
 function setupEnhancedEventListeners() {
@@ -773,3 +964,93 @@ window.toggleColumn = toggleColumn;
 window.goToPage = goToPage;
 window.changePageSize = changePageSize;
 window.exportToExcel = exportToExcel;
+
+// Settings form submit handler
+document.addEventListener('DOMContentLoaded', () => {
+    const settingsForm = document.getElementById('settings-form');
+    if (settingsForm) {
+        settingsForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const price = parseFloat(document.getElementById('price').value) || 0;
+            const isActive = document.getElementById('isActive').value === 'true';
+            // Collect price options as array of objects
+            const priceOptionRows = document.querySelectorAll('#price-options-container .price-option-row');
+            const priceOptionsArr = Array.from(priceOptionRows)
+                .map(row => {
+                    const label = row.querySelector('.price-option-label') ?.value ?.trim();
+                    const amount = parseFloat(row.querySelector('.price-option-input') ?.value);
+                    return label && !isNaN(amount) && amount > 0 ? { label, amount } : null;
+                })
+                .filter(opt => opt !== null);
+
+            // Send to backend
+            try {
+                const token = localStorage.getItem('adminToken');
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ price, priceOptions: JSON.stringify(priceOptionsArr), isActive })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showSuccess('Settings saved successfully');
+                } else {
+                    showWarning(data.message || 'Failed to save settings');
+                }
+            } catch (err) {
+                showError('Error saving settings');
+            }
+        });
+    }
+});
+
+
+function approvePayment(id) {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return alert('Admin token missing. Please log in again.');
+    fetch(`/api/payments/${id}/approve`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showSuccess('Payment approved successfully');
+                loadDashboardData();
+            } else {
+                showWarning(data.message || 'Failed to approve payment');
+            }
+        })
+        .catch(() => showWarning('Error approving payment'));
+}
+
+function deletePayment(id) {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return alert('Admin token missing. Please log in again.');
+    const payment = allPaymentsData.find(p => p.id === id);
+    if (!payment) return showWarning('Payment not found');
+    if (!confirm('Are you sure you want to permanently delete this payment?')) return;
+    fetch(`/api/payments/${payment.uniqueId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showSuccess('Payment deleted successfully');
+                loadDashboardData();
+            } else {
+                showWarning(data.message || 'Failed to delete payment');
+            }
+        })
+        .catch(() => showWarning('Error deleting payment'));
+}

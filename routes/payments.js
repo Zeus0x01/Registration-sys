@@ -549,13 +549,18 @@ router.get('/payments/:uniqueId', async(req, res) => {
 
         res.json({
             success: true,
+            valid: payment.verified && payment.paymentStatus === 'completed',
             payment: {
                 uniqueId: payment.uniqueId,
                 paymentStatus: payment.paymentStatus,
                 verified: payment.verified,
                 amount: payment.amount,
                 qrCodeImage: payment.qrCodeImage,
-                createdAt: payment.createdAt
+                createdAt: payment.createdAt,
+                userName: payment.userName,
+                userEmail: payment.userEmail,
+                userPhone: payment.userPhone,
+                paymentMethod: payment.paymentMethod
             }
         });
     } catch (error) {
@@ -911,9 +916,9 @@ router.post('/wallet-verify-otp', async(req, res) => {
             (verifyResponse.data.id && !verifyResponse.data.error);
 
         if (isSuccess) {
-            // Update payment status
+            // Update payment status to 'paid' (not 'completed')
             await payment.update({
-                paymentStatus: 'completed',
+                paymentStatus: 'paid',
                 verified: true,
                 verifiedAt: new Date(),
                 paymobData: JSON.stringify({
@@ -1017,9 +1022,16 @@ router.post('/paymob-webhook', async(req, res) => {
         let payment = null;
         let transactionSuccess = false;
 
-        // Check transaction success status
+        // Check transaction success status (handle more Paymob cases)
         if (data.obj) {
-            transactionSuccess = data.obj.success === true || data.obj.success === 'true';
+            transactionSuccess = (
+                data.obj.success === true ||
+                data.obj.success === 'true' ||
+                data.obj.pending === false ||
+                data.obj.response_code === 200 ||
+                data.obj.response_code === '200' ||
+                (data.obj.id && !data.obj.error)
+            );
         }
 
         // Try to find payment by special_reference (set in Intention API)
@@ -1054,10 +1066,10 @@ router.post('/paymob-webhook', async(req, res) => {
 
         // Update payment based on transaction status
         if (transactionSuccess && data.type === 'TRANSACTION') {
-            console.log(`Payment found: ${payment.uniqueId}, updating to completed`);
+            console.log(`Payment found: ${payment.uniqueId}, updating to paid`);
 
-            // Update payment status
-            payment.paymentStatus = 'completed';
+            // Update payment status to 'paid' (wait for admin approval)
+            payment.paymentStatus = 'paid';
             payment.verified = true;
             payment.verifiedAt = new Date();
             payment.paymobData = JSON.stringify(data);
@@ -1071,7 +1083,7 @@ router.post('/paymob-webhook', async(req, res) => {
 
             await payment.save();
             await sendTelegramNotification(payment);
-            console.log('Payment completed and notification sent:', payment.uniqueId);
+            console.log('Payment paid and notification sent:', payment.uniqueId);
 
         } else if (!transactionSuccess && data.obj) {
             // Payment failed
@@ -1153,7 +1165,7 @@ router.get('/payments/:uniqueId', async(req, res) => {
         // Return full payment details for admin
         res.json({
             success: true,
-            valid: payment.approved, // Changed: Check if approved instead of completed
+            valid: payment.verified && payment.paymentStatus === 'completed', // Use verified instead of approved
             payment: {
                 id: payment.id,
                 userName: payment.userName,
@@ -1166,7 +1178,7 @@ router.get('/payments/:uniqueId', async(req, res) => {
                 qrCodeImage: payment.qrCodeImage,
                 verified: payment.verified,
                 verifiedAt: payment.verifiedAt,
-                approved: payment.approved, // Add approved field
+                approved: payment.approved,
                 approvedAt: payment.approvedAt,
                 approvedBy: payment.approvedBy,
                 checkedIn: payment.checkedIn,
@@ -1184,6 +1196,10 @@ router.get('/payments/:uniqueId', async(req, res) => {
 
 // POST /payments/:uniqueId/checkin - Mark payment as checked in (admin only)
 router.post('/payments/:uniqueId/checkin', authenticateAdmin, async(req, res) => {
+    // Debug logging for uniqueId and payment lookup
+    console.log('Check-in request received for uniqueId:', req.params.uniqueId);
+    const payment = await Payment.findOne({ where: { uniqueId: req.params.uniqueId } });
+    console.log('Payment lookup result:', payment ? payment.dataValues : null);
     try {
         const { uniqueId } = req.params;
 
@@ -1194,15 +1210,13 @@ router.post('/payments/:uniqueId/checkin', authenticateAdmin, async(req, res) =>
         }
 
         // Check if payment is approved (new requirement)
-        if (!payment.approved) {
-            return res.status(400).json({ success: false, message: 'Payment not approved yet' });
+        // Allow check-in for any payment with status 'completed'
+        if (payment.paymentStatus !== 'completed') {
+            return res.status(400).json({ success: false, message: 'Payment must be completed before check-in.' });
         }
 
-        // Allow check-in for approved payments (even if status is pending)
-        // Remove strict requirement for paymentStatus === 'completed'
-
         if (payment.checkedIn) {
-            return res.status(400).json({ success: false, message: 'Already checked in' });
+            return res.status(400).json({ success: false, message: 'Payment already checked in.' });
         }
 
         payment.checkedIn = true;
@@ -1243,24 +1257,8 @@ router.get('/payments', authenticateAdmin, async(req, res) => {
         const { Op } = require('sequelize');
 
         const payments = await Payment.findAll({
-            where: {
-                [Op.and]: [{
-                        [Op.or]: [
-                            { archived: false },
-                            { archived: null }
-                        ]
-                    },
-                    // Only show payments that have been completed or verified
-                    {
-                        [Op.or]: [
-                            { paymentStatus: 'completed' },
-                            { verified: true }
-                        ]
-                    }
-                ]
-            },
             order: [
-                ['id', 'DESC'] // Newest payments first (descending ID)
+                ['id', 'DESC']
             ],
             attributes: [
                 'id', 'userName', 'userEmail', 'userPhone', 'amount',

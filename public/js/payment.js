@@ -104,30 +104,10 @@ function hideError() {
 }
 
 // Toggle wallet number field based on payment method
-function togglePaymentFields() {
-    const checkedRadio = document.querySelector('input[name="paymentMethod"]:checked');
-    if (!checkedRadio) return;
-
-    const paymentMethod = checkedRadio.value;
-    const walletFields = document.getElementById('wallet-fields');
-    const walletNumber = document.getElementById('walletNumber');
-
-    if (paymentMethod === 'paymob-wallet') {
-        walletFields.classList.remove('hidden');
-        walletNumber.required = true;
-    } else {
-        walletFields.classList.add('hidden');
-        walletNumber.required = false;
-        walletNumber.value = '';
-    }
-}
+// No wallet fields to toggle anymore
 
 // Add event listeners to payment method radio buttons
-document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-        // No wallet fields to toggle anymore
-    });
-});
+// No wallet fields to toggle anymore
 
 // Handle form submission
 document.getElementById('payment-form').addEventListener('submit', async(e) => {
@@ -317,6 +297,10 @@ function closePaymobModal() {
 
 // Show success modal with QR code
 function showSuccessModal(payment) {
+    if (!payment || !payment.qrCodeImage || !payment.uniqueId) {
+        console.warn('Attempted to show success modal with invalid payment data:', payment);
+        return;
+    }
     const modal = document.getElementById('success-modal');
     const qrImage = document.getElementById('qr-code-image');
     const uniqueIdDisplay = document.getElementById('unique-id-display');
@@ -325,6 +309,40 @@ function showSuccessModal(payment) {
     uniqueIdDisplay.textContent = payment.uniqueId;
 
     modal.classList.remove('hidden');
+    modal.style.display = '';
+}
+
+// Close success modal and reset state
+function closeSuccessModal() {
+    const modal = document.getElementById('success-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none'; // Force hide in case .hidden is overridden
+        console.log('Success modal closed');
+    } else {
+        console.warn('Success modal not found');
+    }
+    // Stop any polling that may re-show the modal
+    if (typeof activePollingInterval !== 'undefined' && activePollingInterval) {
+        clearInterval(activePollingInterval);
+        activePollingInterval = null;
+    }
+    // Clear all possible triggers
+    sessionStorage.removeItem('completedPayment');
+    sessionStorage.removeItem('currentPayment');
+    // Remove showQR param from URL if present
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('showQR')) {
+        url.searchParams.delete('showQR');
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+    } else {
+        window.history.replaceState({}, document.title, '/payment.html');
+    }
+    // Optionally reset form fields
+    const form = document.getElementById('payment-form');
+    if (form) form.reset();
+    // Hide error message if shown
+    hideError();
 }
 
 // Download QR code
@@ -347,33 +365,45 @@ function resetSubmitButton() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async() => {
+    // Always forcibly hide all modals on page load
+    ['success-modal', 'paymob-modal', 'wallet-modal'].forEach(id => {
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+    });
+
     await loadPriceOptions();
     await checkSystemStatus();
-    togglePaymentFields(); // Initialize wallet fields visibility
 
     // Check if returning from card payment with completed payment
     const urlParams = new URLSearchParams(window.location.search);
     const showQR = urlParams.get('showQR');
+    const completedPaymentData = sessionStorage.getItem('completedPayment');
 
-    if (showQR === 'true') {
-        // Get completed payment from sessionStorage
-        const completedPaymentData = sessionStorage.getItem('completedPayment');
-
-        if (completedPaymentData) {
-            try {
-                const payment = JSON.parse(completedPaymentData);
-
-                // Clear sessionStorage
+    // Only show modal if both showQR param and completedPayment exist and are valid
+    if (showQR === 'true' && completedPaymentData && completedPaymentData !== 'null' && completedPaymentData !== '') {
+        try {
+            const payment = JSON.parse(completedPaymentData);
+            if (payment && payment.qrCodeImage && payment.uniqueId) {
+                // Clear sessionStorage and URL param
                 sessionStorage.removeItem('completedPayment');
-
+                urlParams.delete('showQR');
+                window.history.replaceState({}, document.title, window.location.pathname + '?' + urlParams.toString());
                 // Show success modal with QR code
                 showSuccessModal(payment);
-
-                // Clean up URL
-                window.history.replaceState({}, document.title, '/payment.html');
-            } catch (error) {
-                console.error('Error parsing completed payment:', error);
+            } else {
+                // Invalid payment data, do not show modal
+                sessionStorage.removeItem('completedPayment');
+                urlParams.delete('showQR');
+                window.history.replaceState({}, document.title, window.location.pathname + '?' + urlParams.toString());
             }
+        } catch (error) {
+            console.error('Error parsing completed payment:', error);
+            sessionStorage.removeItem('completedPayment');
+            urlParams.delete('showQR');
+            window.history.replaceState({}, document.title, window.location.pathname + '?' + urlParams.toString());
         }
     }
 });
@@ -616,20 +646,27 @@ function showWalletModal(paymentData) {
 // Close wallet modal
 function closeWalletModal() {
     const modal = document.getElementById('wallet-modal');
-    modal.classList.add('hidden');
-
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none'; // Force hide in case .hidden is overridden
+    }
     // Clear OTP timer if exists
     if (otpCountdownTimer) {
         clearInterval(otpCountdownTimer);
         otpCountdownTimer = null;
     }
-
     // Reset form
-    document.getElementById('wallet-number-input').value = '';
-    document.getElementById('otp-input').value = '';
-
+    const walletInput = document.getElementById('wallet-number-input');
+    const otpInput = document.getElementById('otp-input');
+    if (walletInput) walletInput.value = '';
+    if (otpInput) otpInput.value = '';
     // Reset submit button
     resetSubmitButton();
+    // Stop any polling
+    if (typeof activePollingInterval !== 'undefined' && activePollingInterval) {
+        clearInterval(activePollingInterval);
+        activePollingInterval = null;
+    }
 }
 
 // Show wallet input step

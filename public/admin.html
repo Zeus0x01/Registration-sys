@@ -41,7 +41,7 @@
             <div class="card">
                 <div class="dashboard-header">
                     <h1>👨‍💼 Admin Dashboard</h1>
-                    <div>
+                    <div class="log-chek-btn">
                         <a href="checkin.html" class="btn btn-primary" style="margin-right: 10px; text-decoration: none;" target="_blank">✅ Check-In Page</a>
                         <button class="btn btn-secondary" onclick="logout()">Logout</button>
                     </div>
@@ -51,7 +51,7 @@
                 <div id="dashboard-success" class="message success hidden"></div>
 
                 <!-- Admin Profile Section - Top of Dashboard -->
-                <div id="admin-profile" class="section" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">
+                <!-- <div id="admin-profile" class="section" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">
                     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
                         <div style="flex: 1; min-width: 250px;">
                             <h2 style="margin: 0 0 10px 0; color: white; font-size: 24px; font-weight: 600;">👤 Welcome back!</h2>
@@ -79,13 +79,12 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div> -->
 
                 <!-- Settings Form -->
                 <div class="section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 15px;">
                         <h2>⚙️ Payment Settings</h2>
-                        <button class="btn btn-danger btn-small" onclick="logout()" title="Logout from admin panel">🚪 Logout</button>
                     </div>
                     <form id="settings-form">
                         <div class="form-group">
@@ -116,12 +115,12 @@
                 </div>
 
                 <!-- Referral Leaderboard -->
-                <div class="section">
+                <!-- <div class="section">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h2>🏆 Referral Leaderboard</h2>
                     </div>
                     <div id="referral-leaderboard" style="margin-bottom: 20px;"></div>
-                </div>
+                </div> -->
 
                 <!-- Payments List -->
                 <div class="section">
@@ -129,7 +128,6 @@
                         <h2>💳 Recent Payments</h2>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                             <button class="btn btn-success btn-small" onclick="exportToCSV()" title="Export to CSV">📥 Export CSV</button>
-                            <button class="btn btn-danger btn-small" onclick="archiveAllPayments()" title="Archive all payments and clear table">📦 Archive All</button>
                             <button class="btn btn-primary btn-small" onclick="loadPayments()" title="Refresh payments list">🔄 Refresh</button>
                         </div>
                     </div>
@@ -297,75 +295,62 @@
                     </div>
 
                     <div class="table-responsive">
-                            <table id="payments-table" class="modern-dashboard-table">
+                        <div class="dashboard-table-card soft-card">
+                            <div class="dashboard-table-filters">
+                                <input type="text" class="table-search" placeholder="Search by name, email, phone, or ID..." id="table-search-input">
+                                <select class="table-filter" id="status-filter">
+                                        <option value="all">All Status</option>
+                                        <option value="completed">Completed</option>
+                                        <option value="pending">Pending</option>
+                                        <option value="failed">Failed</option>
+                                    </select>
+                                <select class="table-filter" id="method-filter">
+                                        <option value="all">All Methods</option>
+                                        <option value="card">Card</option>
+                                        <option value="wallet">Wallet</option>
+                                        <option value="cash">Cash</option>
+                                    </select>
+                                <select class="table-filter" id="approved-filter">
+                                        <option value="all">All</option>
+                                        <option value="approved">Approved</option>
+                                        <option value="pending">Pending Approval</option>
+                                    </select>
+                            </div>
+                            <table id="payments-table" class="dashboard-table soft-table">
                                 <thead>
                                     <tr>
-                                        <th style="width:40px;"><input type="checkbox" id="select-all" onchange="toggleSelectAll()" title="Select all"></th>
-                                        <th style="width:40px;">#</th>
-                                        <th style="min-width:120px;">Name</th>
-                                        <th style="min-width:180px;">Email</th>
-                                        <th style="min-width:120px;">Phone</th>
-                                        <th style="width:90px;">Amount</th>
-                                        <th style="width:110px;">Method</th>
-                                        <th style="width:100px;">Status</th>
-                                        <th style="width:110px;">Unique ID</th>
-                                        <th style="width:90px;">Approved</th>
-                                        <th style="width:110px;">Checked In</th>
-                                        <th style="min-width:120px;">Date</th>
-                                        <th style="min-width:120px;">Actions</th>
+                                        <th class="table-id">ID</th>
+                                        <th class="table-customer">Customer</th>
+                                        <th class="table-contact">Contact</th>
+                                        <th class="table-amount">Amount</th>
+                                        <th class="table-method">Method</th>
+                                        <th class="table-status">Status</th>
+                                        <th class="table-date">Date</th>
+                                        <th class="table-actions">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="payments-tbody">
                                     <tr>
-                                        <td colspan="13" class="text-center" style="background: #f8fafc; color: #667eea; font-size: 18px; font-weight: 500;">Loading...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                    </div>
-                </div>
-
-                <!-- Archived Payments -->
-                <div class="section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h2>📦 Archived Payments</h2>
-                        <button class="btn btn-secondary btn-small" onclick="toggleArchivedSection()" id="toggle-archived-btn">Show Archived</button>
-                    </div>
-                    <div id="archived-section" class="hidden">
-                        <div class="table-responsive">
-                            <table id="archived-table">
-                                <thead>
-                                    <tr>
-                                        <th><input type="checkbox" id="select-all-archived" onchange="toggleSelectAllArchived()" title="Select all"></th>
-                                        <th>#</th>
-                                        <th>Name</th>
-                                        <th>Email</th>
-                                        <th>Phone</th>
-                                        <th>Amount</th>
-                                        <th>Method</th>
-                                        <th>Status</th>
-                                        <th>Unique ID</th>
-                                        <th>Approved</th>
-                                        <th>Checked In</th>
-                                        <th>Archived Date</th>
-                                        <th>Archived By</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="archived-tbody">
-                                    <tr>
-                                        <td colspan="14" class="text-center">Loading archived payments...</td>
+                                        <td class="id-cell">Loading...</td>
+                                        <td class="customer-cell"></td>
+                                        <td class="contact-cell"></td>
+                                        <td class="amount-cell"></td>
+                                        <td class="method-cell"></td>
+                                        <td class="status-cell"></td>
+                                        <td class="date-cell"></td>
+                                        <td class="actions-cell"></td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
+
             </div>
         </div>
     </div>
 
     <script src="js/notifications.js"></script>
-    <!-- <script src="js/admin.js"></script> -->
     <script src="js/login.js"></script>
     <script src="js/admin-enhanced.js"></script>
     <script src="js/analytics.js"></script>
