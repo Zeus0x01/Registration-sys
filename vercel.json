@@ -1,16 +1,10 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "app.js",
-      "use": "@vercel/node"
-    }
+    { "src": "app.js", "use": "@vercel/node" }
   ],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "app.js"
-    }
+    { "src": "/(.*)", "dest": "app.js" }
   ],
   "buildCommand": "npm install pg pg-hstore",
   "env": {
