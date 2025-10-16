@@ -1,18 +1,19 @@
 {
-    "version": 2,
-    "builds": [{
-        "src": "app.js",
-        "use": "@vercel/node"
-    }],
-    "routes": [{
-        "src": "/(.*)",
-        "dest": "app.js"
-    }],
-    "env": {
-        "NODE_ENV": "production"
-    },
-    "github": {
-        "enabled": false,
-        "autoAlias": false
+  "version": 2,
+  "builds": [
+    {
+      "src": "app.js",
+      "use": "@vercel/node"
     }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "app.js"
+    }
+  ],
+  "buildCommand": "npm run vercel-build",
+  "env": {
+    "NODE_ENV": "production"
+  }
 }

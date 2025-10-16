@@ -1,37 +1,38 @@
 {
-    "name": "payment-system-paymob",
-    "version": "1.0.0",
-    "description": "Payment web app for outings in Egypt using Paymob",
-    "main": "app.js",
-    "scripts": {
-        "start": "node app.js",
-        "dev": "nodemon app.js",
-        "generate-password": "node -e \"console.log(require('bcryptjs').hashSync('admin123', 10))\""
-    },
-    "keywords": [
-        "payment",
-        "paymob",
-        "express",
-        "sequelize",
-        "postgresql"
-    ],
-    "author": "",
-    "license": "ISC",
-    "dependencies": {
-        "axios": "^1.6.2",
-        "bcryptjs": "^2.4.3",
-        "body-parser": "^1.20.2",
-        "cors": "^2.8.5",
-        "dotenv": "^16.3.1",
-        "express": "^4.18.2",
-        "jsonwebtoken": "^9.0.2",
-        "node-telegram-bot-api": "^0.64.0",
-        "pg": "^8.16.3",
-        "pg-hstore": "^2.3.4",
-        "qrcode": "^1.5.3",
-        "sequelize": "^6.35.2"
-    },
-    "devDependencies": {
-        "nodemon": "^3.0.2"
-    }
+  "name": "payment-system-paymob",
+  "version": "1.0.0",
+  "description": "Payment web app for outings in Egypt using Paymob",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "vercel-build": "npm install pg",
+    "generate-password": "node -e \"console.log(require('bcryptjs').hashSync('admin123', 10))\""
+  },
+  "keywords": [
+    "payment",
+    "paymob",
+    "express",
+    "sequelize",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "node-telegram-bot-api": "^0.64.0",
+    "pg": "^8.16.3",
+    "pg-hstore": "^2.3.4",
+    "qrcode": "^1.5.3",
+    "sequelize": "^6.35.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
 }
