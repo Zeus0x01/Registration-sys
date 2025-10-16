@@ -18,26 +18,13 @@ if (!dbUrl) {
   throw new Error('Database connection URL is undefined.');
 }
 
-const sequelize = new Sequelize(dbUrl, {
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  dialectModule: pg, // ✅ Force use of pg package
-  logging: process.env.NODE_ENV === 'development' ? console.log : false,
-  pool: {
-    max: 5,
-    min: 0,
-    acquire: 30000,
-    idle: 10000,
-  },
-  define: {
-    timestamps: true,
-    underscored: false,
-  },
   dialectOptions: {
     ssl: {
-      require: true,
-      rejectUnauthorized: false, // ✅ Supabase SSL
-    },
-  },
+      rejectUnauthorized: false
+    }
+  }
 });
 
 module.exports = sequelize;
