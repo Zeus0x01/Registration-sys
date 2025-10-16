@@ -7,7 +7,7 @@
     { "src": "/css/(.*)", "dest": "public/css/$1" },
     { "src": "/img/(.*)", "dest": "public/img/$1" },
     { "src": "/js/(.*)", "dest": "public/js/$1" },
-  { "src": "/(.*\\.html)", "dest": "public/$1" },
+    { "src": "/(.*\\.html)", "dest": "public/$1" },
     { "src": "/(.*)", "dest": "app.js" }
   ],
   "buildCommand": "npm install pg pg-hstore",
