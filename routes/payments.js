@@ -1010,6 +1010,12 @@ router.post('/test-complete-payment', async(req, res) => {
     }
 });
 
+// GET /paymob-webhook - simple health/check endpoint to debug incoming requests (returns 200)
+router.get('/paymob-webhook', (req, res) => {
+    console.log('Received GET on /api/paymob-webhook - replying 200 for debug');
+    return res.status(200).json({ success: true, message: 'Paymob webhook endpoint (GET) - OK' });
+});
+
 // POST /paymob-webhook - Handle Paymob webhook (supports both old API and Intention API)
 router.post('/paymob-webhook', async(req, res) => {
     try {
