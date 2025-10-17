@@ -800,7 +800,8 @@ router.post('/wallet-pay', async(req, res) => {
                 last_name: lastName,
                 street: "NA",
                 building: "NA",
-                phone_number: "+20", // Empty - user enters in checkout
+                // Prefill the international phone number for wallet payments
+                phone_number: internationalPhone,
                 country: "EG",
                 email: payment.userEmail,
                 floor: "NA",
@@ -810,7 +811,8 @@ router.post('/wallet-pay', async(req, res) => {
                 first_name: firstName,
                 last_name: lastName,
                 email: payment.userEmail,
-                phone_number: "+20" // Empty - user enters in checkout
+                // Prefill customer phone as well
+                phone_number: internationalPhone
             },
             extras: {
                 ee: uniqueId // Store uniqueId for reference
