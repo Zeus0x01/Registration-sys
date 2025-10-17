@@ -109,11 +109,30 @@ function verifyPaymobHMAC(data) {
 
 // Build base URL for callbacks (prefer env, then headers, then localhost)
 function getBaseUrl(req) {
-    if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
-    if (process.env.WEBHOOK_URL) return process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '').replace(/\/$/, '');
+    // Normalize a provided URL: trim trailing slash and add https:// if missing
+    function normalizeUrl(u) {
+        if (!u) return null;
+        let url = u.toString().trim();
+        // Remove any trailing slash
+        url = url.replace(/\/$/, '');
+        // If it looks like a host without protocol, add https://
+        if (!/^https?:\/\//i.test(url)) {
+            url = `https://${url}`;
+        }
+        return url;
+    }
+
+    // Prefer explicit BASE_URL (ensure it has a protocol)
+    if (process.env.BASE_URL) return normalizeUrl(process.env.BASE_URL);
+
+    // If a WEBHOOK_URL was provided, derive base from it
+    if (process.env.WEBHOOK_URL) {
+        const derived = process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '');
+        return normalizeUrl(derived);
+    }
 
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host || req.get && req.get('host');
+    const host = req.headers['x-forwarded-host'] || req.headers.host || (req.get && req.get('host'));
     if (host) return `${proto}://${host}`;
 
     return `http://localhost:${process.env.PORT || 5000}`;
