@@ -399,11 +399,13 @@ document.addEventListener('DOMContentLoaded', async() => {
                 urlParams.delete('showQR');
                 window.history.replaceState({}, document.title, window.location.pathname + '?' + urlParams.toString());
             }
-        } catch (error) {
-            console.error('Error parsing completed payment:', error);
-            sessionStorage.removeItem('completedPayment');
+            const baseUrl = window.BASE_URL || window.location.origin;
             urlParams.delete('showQR');
             window.history.replaceState({}, document.title, window.location.pathname + '?' + urlParams.toString());
+        } catch (err) {
+            console.error('Error parsing completedPayment in DOMContentLoaded:', err);
+            // Ensure URL params are cleaned up even on error
+            try { urlParams.delete('showQR'); window.history.replaceState({}, document.title, window.location.pathname + '?' + urlParams.toString()); } catch(e){}
         }
     }
 });

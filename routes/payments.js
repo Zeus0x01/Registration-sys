@@ -107,6 +107,18 @@ function verifyPaymobHMAC(data) {
     return expectedHmac === data.hmac;
 }
 
+// Build base URL for callbacks (prefer env, then headers, then localhost)
+function getBaseUrl(req) {
+    if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
+    if (process.env.WEBHOOK_URL) return process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '').replace(/\/$/, '');
+
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host || req.get && req.get('host');
+    if (host) return `${proto}://${host}`;
+
+    return `http://localhost:${process.env.PORT || 5000}`;
+}
+
 // GET /settings/public - Get public settings (isActive status)
 router.get('/settings/public', async(req, res) => {
     try {
@@ -237,9 +249,7 @@ router.post('/payments', async(req, res) => {
         const amountCents = Math.round(parseFloat(priceToUse) * 100);
 
         // Get base URL for callbacks
-        const baseUrl = process.env.BASE_URL || (process.env.WEBHOOK_URL ?
-            process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
-            `http://localhost:${process.env.PORT || 5000}`);
+        const baseUrl = getBaseUrl(req);
 
         // Split name into first and last
         const nameParts = userName.split(' ');
@@ -601,9 +611,7 @@ router.post('/wallet-pay-direct', async(req, res) => {
         const amountCents = Math.round(payment.amount * 100);
 
         // Get base URL for callbacks
-        const baseUrl = process.env.BASE_URL || (process.env.WEBHOOK_URL ?
-            process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
-            `http://localhost:${process.env.PORT || 5000}`);
+        const baseUrl = getBaseUrl(req);
 
         // Split name into first and last
         const nameParts = payment.userName.split(' ');
@@ -748,9 +756,7 @@ router.post('/wallet-pay', async(req, res) => {
         const amountCents = Math.round(payment.amount * 100);
 
         // Get base URL for callbacks
-        const baseUrl = process.env.BASE_URL || (process.env.WEBHOOK_URL ?
-            process.env.WEBHOOK_URL.replace('/api/paymob-webhook', '') :
-            `http://localhost:${process.env.PORT || 5000}`);
+        const baseUrl = getBaseUrl(req);
 
         // Split name into first and last
         const nameParts = payment.userName.split(' ');

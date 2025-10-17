@@ -280,6 +280,17 @@ app.get('/*.html', (req, res) => {
     });
 });
 
+// Explicit handlers for Paymob redirects to improve logging and avoid accidental 404s
+app.get('/payment-redirect.html', (req, res) => {
+    console.log('Serving /payment-redirect.html - query:', req.query);
+    res.sendFile(path.join(__dirname, 'public', 'payment-redirect.html'));
+});
+
+app.get('/payment-response.html', (req, res) => {
+    console.log('Serving /payment-response.html - query:', req.query);
+    res.sendFile(path.join(__dirname, 'public', 'payment-response.html'));
+});
+
 // Database connection and initialization
 async function initializeDatabase() {
     try {
