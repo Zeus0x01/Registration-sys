@@ -119,6 +119,7 @@ function getBaseUrl(req) {
     return `http://localhost:${process.env.PORT || 5000}`;
 }
 
+
 // GET /settings/public - Get public settings (isActive status)
 router.get('/settings/public', async(req, res) => {
     try {
