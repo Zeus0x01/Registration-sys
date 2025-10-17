@@ -269,6 +269,17 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'payment.html'));
 });
 
+// Serve any other HTML files in public (fixes direct links like /payment-response.html)
+app.get('/*.html', (req, res) => {
+    const htmlPath = path.join(__dirname, 'public', req.path);
+    return res.sendFile(htmlPath, err => {
+        if (err) {
+            console.error('Error sending HTML file:', htmlPath, err);
+            return res.status(404).send('Not found');
+        }
+    });
+});
+
 // Database connection and initialization
 async function initializeDatabase() {
     try {
