@@ -1100,10 +1100,11 @@ router.post('/paymob-webhook', async(req, res) => {
 
         // Update payment based on transaction status
         if (transactionSuccess && data.type === 'TRANSACTION') {
-            console.log(`Payment found: ${payment.uniqueId}, updating to paid`);
+            console.log(`Payment found: ${payment.uniqueId}, updating to completed`);
 
-            // Update payment status to 'paid' (wait for admin approval)
-            payment.paymentStatus = 'paid';
+                // Update payment status to 'completed' (model enum expects 'completed')
+                // Use 'completed' instead of 'paid' to match the Payment model enum
+                payment.paymentStatus = 'completed';
             payment.verified = true;
             payment.verifiedAt = new Date();
             payment.paymobData = JSON.stringify(data);
