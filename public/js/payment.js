@@ -34,7 +34,7 @@ async function loadPriceOptions() {
                     // Add default price as first option
                     const defaultOptionElement = document.createElement('option');
                     defaultOptionElement.value = 'default';
-                    const defaultAmount = defaultPrice % 1 === 0 ? parseInt(defaultPrice) : defaultPrice;
+                    const defaultAmount = Math.round(defaultPrice);
                     defaultOptionElement.textContent = `Standard - ${defaultAmount} EGP`;
                     selectElement.appendChild(defaultOptionElement);
 
@@ -57,8 +57,8 @@ async function loadPriceOptions() {
         }
 
         // If no price options, show default price
-        const displayPrice = defaultPrice % 1 === 0 ? parseInt(defaultPrice) : defaultPrice;
-        document.getElementById('defaultPrice').textContent = `${displayPrice} EGP`;
+    const displayPrice = Math.round(defaultPrice);
+    document.getElementById('defaultPrice').textContent = `${displayPrice} EGP`;
         document.getElementById('price-selection').classList.add('hidden');
         document.getElementById('price-display').classList.remove('hidden');
         return true;

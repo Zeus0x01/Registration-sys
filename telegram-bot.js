@@ -36,7 +36,7 @@ async function sendTelegramNotification(payment) {
 👤 *Name:* ${payment.userName}
 📧 *Email:* ${payment.userEmail}
 📱 *Phone:* ${payment.userPhone}
-💰 *Amount:* ${payment.amount} EGP
+    💰 *Amount:* ${Math.round(payment.amount)} EGP
 💳 *Method:* ${payment.paymentMethod === 'paymob-wallet' ? '📱 Mobile Wallet' : '💳 Card/Debit'}
 📅 *Date:* ${new Date(payment.createdAt).toLocaleString()}
 

@@ -144,7 +144,7 @@ function showResult(isValid, payment = null, errorMessage = null) {
             <p><strong>Name:</strong> ${escapeHtml(payment.userName)}</p>
             <p><strong>Email:</strong> ${escapeHtml(payment.userEmail)}</p>
             <p><strong>Phone:</strong> ${escapeHtml(payment.userPhone)}</p>
-            <p><strong>Amount:</strong> ${payment.amount} EGP</p>
+            <p><strong>Amount:</strong> ${Math.round(payment.amount)} EGP</p>
             <p><strong>Method:</strong> ${formatPaymentMethod(payment.paymentMethod)}</p>
         `;
 

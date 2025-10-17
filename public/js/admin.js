@@ -311,7 +311,7 @@ router.post('/payments', async(req, res) => {
 
             // Update payment with Paymob intention data
             await payment.update({
-                paymentId: intentionData.id ? .toString() || uniqueId,
+                paymentId: intentionData.id?.toString() || uniqueId,
                 paymobData: JSON.stringify({
                     intentionId: intentionData.id,
                     clientSecret: intentionData.client_secret,
@@ -344,7 +344,7 @@ router.post('/payments', async(req, res) => {
             });
 
         } catch (error) {
-            console.error('Intention API error (card):', error.response ? .data || error.message);
+            console.error('Intention API error (card):', error.response?.data || error.message);
 
             // If Intention API fails, fall back to old API
             console.log('Falling back to old API for card payment...');
@@ -413,11 +413,11 @@ router.post('/payments', async(req, res) => {
         }
 
     } catch (error) {
-        console.error('Payment creation error:', error.response ? .data || error.message);
+    console.error('Payment creation error:', error.response?.data || error.message);
         res.status(500).json({
             success: false,
             message: 'Failed to create payment',
-            error: error.response ? .data ? .detail || error.response ? .data ? .message || error.message
+            error: error.response?.data?.detail || error.response?.data?.message || error.message
         });
     }
 });
@@ -501,7 +501,7 @@ router.get('/payments/statistics', authenticateAdmin, async(req, res) => {
             success: true,
             statistics: {
                 approvedCount,
-                totalMoney: parseFloat(totalMoney) % 1 === 0 ? parseInt(totalMoney) : parseFloat(totalMoney).toFixed(2),
+                totalMoney: Math.round(parseFloat(totalMoney)),
                 totalPayments,
                 checkedInCount,
                 pendingApproval: totalPayments - approvedCount,
@@ -669,7 +669,7 @@ router.post('/wallet-pay-direct', async(req, res) => {
 
         // Update payment with Paymob data
         await payment.update({
-            paymentId: intentionData.id ? .toString() || uniqueId,
+            paymentId: intentionData.id?.toString() || uniqueId,
             walletNumber: null, // Will be filled when user completes payment in Paymob
             paymobData: JSON.stringify({
                 intentionId: intentionData.id,
@@ -702,11 +702,11 @@ router.post('/wallet-pay-direct', async(req, res) => {
         }
 
     } catch (error) {
-        console.error('Wallet pay direct error:', error.response ? .data || error.message);
+    console.error('Wallet pay direct error:', error.response?.data || error.message);
         res.status(500).json({
             success: false,
             message: 'Failed to create payment',
-            error: error.response ? .data ? .detail || error.response ? .data ? .message || error.message
+            error: error.response?.data?.detail || error.response?.data?.message || error.message
         });
     }
 });
@@ -815,7 +815,7 @@ router.post('/wallet-pay', async(req, res) => {
 
         // Update payment with Paymob intention data
         await payment.update({
-            paymentId: intentionData.id ? .toString() || uniqueId,
+            paymentId: intentionData.id?.toString() || uniqueId,
             paymobData: JSON.stringify({
                 intentionId: intentionData.id,
                 clientSecret: intentionData.client_secret,
@@ -858,11 +858,11 @@ router.post('/wallet-pay', async(req, res) => {
         }
 
     } catch (error) {
-        console.error('Intention API error:', error.response ? .data || error.message);
+    console.error('Intention API error:', error.response?.data || error.message);
         res.status(500).json({
             success: false,
             message: 'Failed to process wallet payment',
-            error: error.response ? .data ? .detail || error.response ? .data ? .message || error.message
+            error: error.response?.data?.detail || error.response?.data?.message || error.message
         });
     }
 });
@@ -954,11 +954,11 @@ router.post('/wallet-verify-otp', async(req, res) => {
         }
 
     } catch (error) {
-        console.error('OTP verification error:', error.response ? .data || error.message);
+    console.error('OTP verification error:', error.response?.data || error.message);
         res.status(500).json({
             success: false,
             message: 'Failed to verify OTP',
-            error: error.response ? .data ? .message || error.message
+            error: error.response?.data?.message || error.message
         });
     }
 });
@@ -1225,7 +1225,7 @@ router.post('/payments/:uniqueId/checkin', authenticateAdmin, async(req, res) =>
 👤 *Name:* ${payment.userName}
 📧 *Email:* ${payment.userEmail}
 🆔 *Unique ID:* \`${payment.uniqueId}\`
-💰 *Amount:* ${payment.amount} EGP
+💰 *Amount:* ${Math.round(payment.amount)} EGP
 ⏰ *Check-In Time:* ${new Date().toLocaleString()}
 👨‍💼 *Staff:* ${req.user.username}
             `.trim();

@@ -391,7 +391,7 @@ function renderArchivedPayments(payments) {
                 <td>${payment.userName}</td>
                 <td>${payment.userEmail}</td>
                 <td>${payment.userPhone}</td>
-                <td>${payment.amount} EGP</td>
+                <td>${Math.round(payment.amount)} EGP</td>
                 <td>
                     <span style="display: inline-flex; align-items: center; gap: 5px;">
                         ${payment.paymentMethod === 'paymob-wallet' ? '📱 Wallet' : '💳 Card/Debit'}

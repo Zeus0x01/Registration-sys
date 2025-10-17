@@ -494,7 +494,7 @@ router.get('/payments/statistics', authenticateAdmin, async(req, res) => {
             success: true,
             statistics: {
                 approvedCount,
-                totalMoney: parseFloat(totalMoney) % 1 === 0 ? parseInt(totalMoney) : parseFloat(totalMoney).toFixed(2),
+                totalMoney: Math.round(parseFloat(totalMoney)),
                 totalPayments,
                 checkedInCount,
                 pendingApproval: totalPayments - approvedCount,
@@ -1238,7 +1238,7 @@ router.post('/payments/:uniqueId/checkin', authenticateAdmin, async(req, res) =>
 👤 *Name:* ${payment.userName}
 📧 *Email:* ${payment.userEmail}
 🆔 *Unique ID:* \`${payment.uniqueId}\`
-💰 *Amount:* ${payment.amount} EGP
+                        💰 *Amount:* ${Math.round(payment.amount)} EGP
 ⏰ *Check-In Time:* ${new Date().toLocaleString()}
 👨‍💼 *Staff:* ${req.user.username}
             `.trim();
@@ -1356,7 +1356,7 @@ router.post('/payments/:id/send-telegram', authenticateAdmin, async(req, res) =>
 👤 *Name:* ${payment.userName}
 📧 *Email:* ${payment.userEmail}
 📱 *Phone:* ${payment.userPhone}
-💰 *Amount:* ${payment.amount} EGP
+                💰 *Amount:* ${Math.round(payment.amount)} EGP
 💳 *Method:* ${payment.paymentMethod === 'paymob-wallet' ? '📱 Mobile Wallet' : '💳 Card/Debit'}
 📅 *Date:* ${new Date(payment.createdAt).toLocaleString()}
 
@@ -1429,7 +1429,7 @@ router.post('/payments/:id/approve', authenticateAdmin, async(req, res) => {
 💳 *Payment ID:* \`${payment.uniqueId}\`
 👤 *Name:* ${payment.userName}
 📧 *Email:* ${payment.userEmail}
-💰 *Amount:* ${payment.amount} EGP
+                💰 *Amount:* ${Math.round(payment.amount)} EGP
 👨‍💼 *Approved By:* ${req.user.username}
 📅 *Approved At:* ${new Date().toLocaleString()}
 

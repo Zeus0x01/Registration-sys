@@ -216,7 +216,7 @@
                             </div>` : ''}
                             ${amountCents ? `<div class="detail-row">
                                 <span class="detail-label">Amount:</span>
-                                <span class="detail-value">${(amountCents / 100).toFixed(2)} EGP</span>
+                                <span class="detail-value">${Math.round(amountCents / 100)} EGP</span>
                             </div>` : ''}
                         </div>
                         <div class="info-box">

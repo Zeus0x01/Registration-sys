@@ -249,8 +249,8 @@ function updateAnalyticsSummary() {
     const avgProcessingTime = calculateAverageProcessingTime();
     
     // Update UI
-    document.getElementById('today-revenue').textContent = `${todayRevenue.toFixed(2)} EGP`;
-    document.getElementById('week-revenue').textContent = `${weekRevenue.toFixed(2)} EGP`;
+    document.getElementById('today-revenue').textContent = `${Math.round(todayRevenue)} EGP`;
+    document.getElementById('week-revenue').textContent = `${Math.round(weekRevenue)} EGP`;
     document.getElementById('conversion-rate').textContent = `${conversionRate}%`;
     document.getElementById('avg-processing-time').textContent = `${avgProcessingTime} min`;
 }

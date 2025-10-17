@@ -459,7 +459,7 @@ function exportToExcel() {
         ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
         '',
         'Summary',
-        `Total Amount: ${dataToExport.reduce((sum, p) => sum + parseFloat(p.amount), 0).toFixed(2)} EGP`,
+    `Total Amount: ${Math.round(dataToExport.reduce((sum, p) => sum + parseFloat(p.amount), 0))} EGP`,
         `Approved: ${dataToExport.filter(p => p.approved).length}`,
         `Checked In: ${dataToExport.filter(p => p.checkedIn).length}`
     ].join('\n');
@@ -538,7 +538,7 @@ function renderPayments(payments) {
         const customerPhone = payment.userPhone ? `<span class="customer-phone">${escapeHtml(payment.userPhone)}</span>` : '-';
 
         // Amount
-        const amount = payment.amount ? `<span class="amount-bold">${payment.amount}</span> <span class="currency">EGP</span>` : '-';
+    const amount = payment.amount ? `<span class="amount-bold">${Math.round(payment.amount)}</span> <span class="currency">EGP</span>` : '-';
 
         // Date
         const date = payment.createdAt ? `<span class="date-main">${new Date(payment.createdAt).toLocaleDateString()}</span> <span class="date-sub">${new Date(payment.createdAt).toLocaleTimeString()}</span>` : '-';
