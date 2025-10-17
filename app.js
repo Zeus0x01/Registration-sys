@@ -55,8 +55,6 @@ function authenticateAdmin(req, res, next) {
     }
 }
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Admin Registration Endpoint
 app.post('/api/admin/register', async(req, res) => {
